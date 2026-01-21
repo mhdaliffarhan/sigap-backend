@@ -42,6 +42,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/users/{user}/roles', [UserController::class, 'updateRoles']);
     Route::post('/users/bulk/update', [UserController::class, 'bulkUpdate']);
 
+    Route::apiResource('roles', \App\Http\Controllers\RoleController::class);
+
     // Category Management Routes (Disabled - not used, categories table doesn't exist)
     // Route::apiResource('categories', CategoryController::class);
 
@@ -72,6 +74,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/tickets/calendar/grid', [TicketController::class, 'calendarGrid']);
     Route::get('/tickets/export/zoom', [TicketController::class, 'exportZoom']);
     Route::get('/tickets/export/all', [TicketController::class, 'exportAll']);
+
+
+    // Workflow Routes
+    Route::get('/tickets/{ticket}/actions', [App\Http\Controllers\WorkflowController::class, 'getAvailableActions']);
+    Route::post('/tickets/{ticket}/transitions/{transition}', [App\Http\Controllers\WorkflowController::class, 'executeTransition']);
 
     Route::prefix('services')->group(function () {
         // Menu Layanan
