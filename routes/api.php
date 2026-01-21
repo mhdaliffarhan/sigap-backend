@@ -73,6 +73,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/tickets/export/zoom', [TicketController::class, 'exportZoom']);
     Route::get('/tickets/export/all', [TicketController::class, 'exportAll']);
 
+    Route::prefix('services')->group(function () {
+        // Menu Layanan
+        Route::get('/', [App\Http\Controllers\DynamicServiceController::class, 'index']);
+        // Detail Layanan (Form Schema)
+        Route::get('/{slug}', [App\Http\Controllers\DynamicServiceController::class, 'show']);
+        // Cek Stok/Resource (Mobil/Ruangan)
+        Route::get('/{slug}/resources', [App\Http\Controllers\DynamicServiceController::class, 'getResources']);
+    });
+
     // Generic resource routes AFTER specific routes
     Route::apiResource('tickets', TicketController::class);
     Route::patch('/tickets/{ticket}/assign', [TicketController::class, 'assign']);

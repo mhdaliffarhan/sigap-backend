@@ -14,6 +14,10 @@ class Ticket extends Model
 
     protected $fillable = [
         'ticket_number',
+        'user_id',
+        'title',
+        'description',
+        'status',
         'type',
         'title',
         'description',
@@ -46,6 +50,12 @@ class Ticket extends Model
         'form_data',
         'status',
         'work_orders_ready', // Flag untuk indicate work orders sudah ready
+        'service_category_id',
+        'resource_id',
+        'start_date',
+        'end_date',
+        'dynamic_form_data',
+        'current_assignee_role'
     ];
 
     protected $casts = [
@@ -58,6 +68,9 @@ class Ticket extends Model
         'zoom_date' => 'date',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
+        'dynamic_form_data' => 'array',
+        'start_date' => 'datetime',
+        'end_date' => 'datetime',
     ];
 
     /**
@@ -230,7 +243,7 @@ class Ticket extends Model
     public function canTransitionTo($newStatus)
     {
         $currentStatus = $this->status;
-        
+
         // Define allowed transitions for simplified status enum
         $allowedTransitions = [
             'pending_review' => ['approved', 'rejected'],
@@ -245,5 +258,15 @@ class Ticket extends Model
         ];
 
         return in_array($newStatus, $allowedTransitions[$currentStatus] ?? []);
+    }
+
+    public function serviceCategory()
+    {
+        return $this->belongsTo(ServiceCategory::class);
+    }
+
+    public function resource()
+    {
+        return $this->belongsTo(Resource::class);
     }
 }
