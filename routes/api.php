@@ -44,6 +44,10 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::apiResource('roles', \App\Http\Controllers\RoleController::class);
 
+    Route::apiResource('service-categories', \App\Http\Controllers\ServiceCategoryController::class);
+
+    Route::apiResource('resources', \App\Http\Controllers\ResourceController::class);
+
     // Category Management Routes (Disabled - not used, categories table doesn't exist)
     // Route::apiResource('categories', CategoryController::class);
 

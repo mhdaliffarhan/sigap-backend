@@ -48,8 +48,9 @@ class UserController extends Controller
 
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%$search%")
-                  ->orWhere('email', 'like', "%$search%")
-                  ->orWhere('nip', 'like', "%$search%");
+                    ->orWhere('username', 'like', "%$search%")
+                    ->orWhere('email', 'like', "%$search%")
+                    ->orWhere('nip', 'like', "%$search%");
             });
         }
 
@@ -74,6 +75,7 @@ class UserController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email',
+            'username' => 'required|string|unique:users,username',
             'password' => 'required|string|min:8',
             'nip' => 'required|string|unique:users,nip',
             'jabatan' => 'required|string|max:255',
@@ -86,7 +88,7 @@ class UserController extends Controller
 
         // Store plain password for email
         $plainPassword = $validated['password'];
-        
+
         $validated['password'] = Hash::make($validated['password']);
 
         // Set role (single) dari roles dengan priority logic
@@ -94,7 +96,7 @@ class UserController extends Controller
         // Priority: super_admin > admin_layanan > admin_penyedia > teknisi > pegawai
         $rolePriority = ['super_admin', 'admin_layanan', 'admin_penyedia', 'teknisi', 'pegawai'];
         $primaryRole = 'pegawai'; // default fallback
-        
+
         foreach ($rolePriority as $role) {
             if (in_array($role, $validated['roles'])) {
                 $primaryRole = $role;
@@ -131,6 +133,7 @@ class UserController extends Controller
     {
         $validated = $request->validate([
             'name' => 'string|max:255',
+            'username' => 'string|unique::users,username,' . $user->id,
             'email' => 'email|unique:users,email,' . $user->id,
             'nip' => 'string|unique:users,nip,' . $user->id,
             'jabatan' => 'string|max:255',
@@ -153,7 +156,7 @@ class UserController extends Controller
             // Priority: super_admin > admin_layanan > admin_penyedia > teknisi > pegawai
             $rolePriority = ['super_admin', 'admin_layanan', 'admin_penyedia', 'teknisi', 'pegawai'];
             $primaryRole = 'pegawai'; // default fallback
-            
+
             foreach ($rolePriority as $role) {
                 if (in_array($role, $validated['roles'])) {
                     $primaryRole = $role;
@@ -207,10 +210,10 @@ class UserController extends Controller
         ]);
 
         $user->roles = $validated['roles'];
-        
+
         // Ensure active role is valid
         $this->ensureActiveRoleIsValid($user);
-        
+
         $user->save();
 
         // Audit log
@@ -244,6 +247,7 @@ class UserController extends Controller
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
+            'username' => 'required|string|unique:users,username,' . $user->id,
             'nip' => 'required|string|size:18|unique:users,nip,' . $user->id,
             'jabatan' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email,' . $user->id,
@@ -253,6 +257,7 @@ class UserController extends Controller
 
         $user->update([
             'name' => $validated['name'],
+            'username' => $validated['username'],
             'nip' => $validated['nip'],
             'jabatan' => $validated['jabatan'],
             'email' => $validated['email'],
@@ -285,10 +290,10 @@ class UserController extends Controller
         ]);
 
         $requestedRole = $validated['role'];
-        
+
         // Ensure the requested role is in the user's available roles
         $availableRoles = is_array($user->roles) ? $user->roles : json_decode($user->roles ?? '[]', true);
-        
+
         if (!in_array($requestedRole, $availableRoles)) {
             throw ValidationException::withMessages([
                 'role' => ['You do not have permission to switch to this role.'],
