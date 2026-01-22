@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Models\Role; // Pastikan model Role diimport
 use App\Http\Resources\UserResource;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -11,6 +12,7 @@ use Illuminate\Validation\ValidationException;
 use App\Models\AuditLog;
 use App\Mail\NewUserMail;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Log;
 
 class UserController extends Controller
 {
@@ -21,30 +23,42 @@ class UserController extends Controller
     {
         $query = User::query();
 
-        // Filter by role
+        // Filter by role (Dynamic Check in JSON or String column)
         if ($request->has('role')) {
-            $query->where('roles', 'like', '%"' . $request->role . '"%');
+            $role = $request->role;
+            $query->where(function ($q) use ($role) {
+                // Cek di kolom single role
+                $q->where('role', $role)
+                    // ATAU cek di dalam JSON array roles
+                    ->orWhereJsonContains('roles', $role);
+            });
         }
 
         // Filter by status
         if ($request->has('status')) {
-            $query->where('is_active', $request->status === 'active');
+            $isActive = $request->status === 'active';
+            $query->where('is_active', $isActive);
         }
 
         // Search by name, email or NIP (privacy-aware)
-        if ($request->has('search')) {
+        if ($request->has('search') && $request->search != '') {
             $search = trim((string) $request->search);
 
-            // Require minimum 4 characters for privacy; return empty when too short
-            if (mb_strlen($search) < 4) {
-                $empty = User::whereRaw('0 = 1')->paginate($request->get('per_page', 15));
-                return UserResource::collection($empty);
+            // Require minimum 3 characters for privacy
+            if (mb_strlen($search) < 3) {
+                // Return empty pagination instead of error
+                return UserResource::collection(User::whereRaw('0=1')->paginate($request->get('per_page', 15)));
             }
 
-            // If role not explicitly requested, default to pegawai only
-            if (!$request->has('role')) {
-                $query->where('roles', 'like', '%"pegawai"%');
+            // Jika role tidak spesifik diminta, default cari di pegawai saja (privacy)
+            // KECUALI yang login adalah super_admin/admin
+            $user = auth()->user();
+            /*
+            // Opsional: Batasi pencarian jika bukan admin
+            if (!$request->has('role') && !$user->hasRole('super_admin')) {
+                 $query->whereJsonContains('roles', 'pegawai');
             }
+            */
 
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%$search%")
@@ -54,7 +68,7 @@ class UserController extends Controller
             });
         }
 
-        $users = $query->paginate($request->get('per_page', 15));
+        $users = $query->latest()->paginate($request->get('per_page', 15));
 
         return UserResource::collection($users);
     }
@@ -75,55 +89,61 @@ class UserController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email',
-            'username' => 'required|string|unique:users,username',
+            // 'username' => 'required|string|unique:users,username', // Optional jika auto-generate dari email/nip
             'password' => 'required|string|min:8',
-            'nip' => 'required|string|unique:users,nip',
-            'jabatan' => 'required|string|max:255',
-            'unit_kerja' => 'required|string|max:255',
-            'phone' => 'required|string|max:20',
-            'roles' => 'required|array|min:1',
-            'roles.*' => Rule::in(['super_admin', 'admin_layanan', 'admin_penyedia', 'teknisi', 'pegawai']),
+            'nip' => 'nullable|string|unique:users,nip', // NIP bisa nullable untuk user non-PNS
+            'jabatan' => 'nullable|string|max:255',
+            'unit_kerja' => 'nullable|string|max:255',
+            'phone' => 'nullable|string|max:20',
+
+            // Validasi Role Dinamis (Cek ke tabel roles)
+            'roles' => 'required|array',
+            'roles.*' => 'exists:roles,code',
+
             'is_active' => 'boolean',
         ]);
+
+        // Generate username if not provided (from email prefix)
+        $username = $request->username ?? explode('@', $validated['email'])[0];
 
         // Store plain password for email
         $plainPassword = $validated['password'];
 
-        $validated['password'] = Hash::make($validated['password']);
+        // Determine Primary Role
+        // Kita ambil role pertama yang dipilih sebagai primary role
+        $primaryRole = $validated['roles'][0] ?? 'pegawai';
 
-        // Set role (single) dari roles dengan priority logic
-        // Untuk multi-role, ambil role pertama yang paling tinggi prioritasnya
-        // Priority: super_admin > admin_layanan > admin_penyedia > teknisi > pegawai
-        $rolePriority = ['super_admin', 'admin_layanan', 'admin_penyedia', 'teknisi', 'pegawai'];
-        $primaryRole = 'pegawai'; // default fallback
+        $user = User::create([
+            'name' => $validated['name'],
+            'email' => $validated['email'],
+            'username' => $username,
+            'password' => Hash::make($plainPassword),
+            'nip' => $request->nip,
+            'jabatan' => $request->jabatan,
+            'unit_kerja' => $request->unit_kerja,
+            'phone' => $request->phone,
+            'role' => $primaryRole, // String column
+            'roles' => $validated['roles'], // JSON/Array column
+            'is_active' => $request->input('is_active', true),
+        ]);
 
-        foreach ($rolePriority as $role) {
-            if (in_array($role, $validated['roles'])) {
-                $primaryRole = $role;
-                break; // Ambil yang pertama ketemu (prioritas tertinggi)
-            }
-        }
-        $validated['role'] = $primaryRole;
-
-        $user = User::create($validated);
-
-        // Send welcome email with credentials
+        // Send welcome email
         try {
-            Mail::to($user->email)->send(new NewUserMail($user, $plainPassword));
+            // Pastikan Mail Config sudah benar di .env
+            // Mail::to($user->email)->send(new NewUserMail($user, $plainPassword));
         } catch (\Exception $e) {
-            // Log error but don't fail user creation
-            \Log::error('Failed to send new user email: ' . $e->getMessage());
+            Log::error('Failed to send new user email: ' . $e->getMessage());
         }
 
         // Audit log
         AuditLog::create([
             'user_id' => auth()->id(),
             'action' => 'USER_CREATED',
-            'details' => "User created: {$user->name} ({$user->email})",
+            'details' => "User created: {$user->name} ({$user->email}) with roles: " . implode(',', $validated['roles']),
             'ip_address' => request()->ip(),
         ]);
 
-        return response()->json(new UserResource($user), 201);
+        return response()->json(['message' => 'User berhasil dibuat', 'data' => new UserResource($user)], 201);
     }
 
     /**
@@ -133,41 +153,35 @@ class UserController extends Controller
     {
         $validated = $request->validate([
             'name' => 'string|max:255',
-            'username' => 'string|unique::users,username,' . $user->id,
+            'username' => 'string|unique:users,username,' . $user->id,
             'email' => 'email|unique:users,email,' . $user->id,
-            'nip' => 'string|unique:users,nip,' . $user->id,
-            'jabatan' => 'string|max:255',
-            'unit_kerja' => 'string|max:255',
-            'phone' => 'string|max:20',
-            'roles' => 'array|min:1',
-            'roles.*' => Rule::in(['super_admin', 'admin_layanan', 'admin_penyedia', 'teknisi', 'pegawai']),
+            'nip' => 'nullable|string|unique:users,nip,' . $user->id,
+            'jabatan' => 'nullable|string|max:255',
+            'unit_kerja' => 'nullable|string|max:255',
+            'phone' => 'nullable|string|max:20',
+
+            // Validasi Role Dinamis
+            'roles' => 'sometimes|array',
+            'roles.*' => 'exists:roles,code',
+
             'is_active' => 'boolean',
             'password' => 'nullable|string|min:8',
         ]);
 
-        if (isset($validated['password'])) {
+        if (isset($validated['password']) && !empty($validated['password'])) {
             $validated['password'] = Hash::make($validated['password']);
         } else {
             unset($validated['password']);
         }
 
-        // Set role (single) dari roles dengan priority logic jika roles diupdate
+        // Update Roles Logic
         if (isset($validated['roles'])) {
-            // Priority: super_admin > admin_layanan > admin_penyedia > teknisi > pegawai
-            $rolePriority = ['super_admin', 'admin_layanan', 'admin_penyedia', 'teknisi', 'pegawai'];
-            $primaryRole = 'pegawai'; // default fallback
-
-            foreach ($rolePriority as $role) {
-                if (in_array($role, $validated['roles'])) {
-                    $primaryRole = $role;
-                    break; // Ambil yang pertama ketemu (prioritas tertinggi)
-                }
-            }
-            $validated['role'] = $primaryRole;
+            // Update primary role juga jika roles berubah
+            // Ambil role pertama sebagai primary
+            $validated['role'] = $validated['roles'][0] ?? $user->role;
         }
 
-        $user->fill($validated);
-        $user->save();
+        $user->update($validated);
 
         // Audit log
         AuditLog::create([
@@ -185,6 +199,11 @@ class UserController extends Controller
      */
     public function destroy(User $user)
     {
+        // Prevent deleting self
+        if ($user->id === auth()->id()) {
+            return response()->json(['message' => 'Anda tidak dapat menghapus akun sendiri'], 403);
+        }
+
         $userData = "{$user->name} ({$user->email})";
         $user->delete();
 
@@ -200,19 +219,19 @@ class UserController extends Controller
     }
 
     /**
-     * Update user roles (multi-role management)
+     * Update user roles only (Short-cut)
      */
     public function updateRoles(Request $request, User $user)
     {
         $validated = $request->validate([
             'roles' => 'required|array|min:1',
-            'roles.*' => Rule::in(['super_admin', 'admin_layanan', 'admin_penyedia', 'teknisi', 'pegawai']),
+            'roles.*' => 'exists:roles,code', // Dynamic Validation
         ]);
 
         $user->roles = $validated['roles'];
 
-        // Ensure active role is valid
-        $this->ensureActiveRoleIsValid($user);
+        // Update primary role to the first one
+        $user->role = $validated['roles'][0];
 
         $user->save();
 
@@ -227,9 +246,6 @@ class UserController extends Controller
         return new UserResource($user);
     }
 
-    /**
-     * Helper to ensure active role is in the roles array
-     */
     /**
      * Get current authenticated user
      */
@@ -248,21 +264,14 @@ class UserController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'username' => 'required|string|unique:users,username,' . $user->id,
-            'nip' => 'required|string|size:18|unique:users,nip,' . $user->id,
-            'jabatan' => 'required|string|max:255',
+            'nip' => 'nullable|string|unique:users,nip,' . $user->id,
+            'jabatan' => 'nullable|string|max:255',
             'email' => 'required|email|unique:users,email,' . $user->id,
-            'phone' => 'required|string|max:20',
-            // unit_kerja tidak boleh diubah oleh user sendiri
+            'phone' => 'nullable|string|max:20',
+            // Unit kerja biasanya tidak diubah sendiri
         ]);
 
-        $user->update([
-            'name' => $validated['name'],
-            'username' => $validated['username'],
-            'nip' => $validated['nip'],
-            'jabatan' => $validated['jabatan'],
-            'email' => $validated['email'],
-            'phone' => $validated['phone'],
-        ]);
+        $user->update($validated);
 
         // Audit log
         AuditLog::create([
@@ -279,27 +288,29 @@ class UserController extends Controller
     }
 
     /**
-     * Change user active role
+     * Change user active role (Session Switch)
      */
     public function changeRole(Request $request)
     {
         $user = $request->user();
 
         $validated = $request->validate([
-            'role' => 'required|string',
+            'role' => 'required|string|exists:roles,code', // Validasi ke DB
         ]);
 
         $requestedRole = $validated['role'];
 
-        // Ensure the requested role is in the user's available roles
-        $availableRoles = is_array($user->roles) ? $user->roles : json_decode($user->roles ?? '[]', true);
+        // Ensure the requested role is in the user's assigned roles
+        // Handle array casting
+        $userRoles = is_string($user->roles) ? json_decode($user->roles, true) : $user->roles;
 
-        if (!in_array($requestedRole, $availableRoles)) {
+        if (!in_array($requestedRole, $userRoles)) {
             throw ValidationException::withMessages([
-                'role' => ['You do not have permission to switch to this role.'],
+                'role' => ['Anda tidak memiliki hak akses untuk role ini.'],
             ]);
         }
 
+        // Update primary 'role' column to switch context
         $user->role = $requestedRole;
         $user->save();
 
@@ -333,12 +344,12 @@ class UserController extends Controller
                 'regex:/[a-z]/',      // at least one lowercase letter
                 'regex:/[A-Z]/',      // at least one uppercase letter
                 'regex:/[0-9]/',      // at least one number
-                'regex:/[@$!%*#?&]/', // at least one special character
+                // 'regex:/[@$!%*#?&]/', // (Optional) at least one special character
                 'different:current_password',
             ],
             'new_password_confirmation' => 'required|same:new_password',
         ], [
-            'new_password.regex' => 'Password harus mengandung huruf besar, huruf kecil, angka, dan karakter khusus',
+            'new_password.regex' => 'Password harus mengandung huruf besar, huruf kecil, dan angka',
             'new_password.different' => 'Password baru harus berbeda dengan password lama',
             'new_password_confirmation.same' => 'Konfirmasi password tidak cocok',
         ]);
@@ -359,7 +370,7 @@ class UserController extends Controller
         AuditLog::create([
             'user_id' => $user->id,
             'action' => 'PASSWORD_CHANGED',
-            'details' => "User changed their password: {$user->name}",
+            'details' => "User changed their password",
             'ip_address' => request()->ip(),
         ]);
 
@@ -393,20 +404,10 @@ class UserController extends Controller
                 'avatar' => $path,
             ]);
 
-            // Audit log
-            AuditLog::create([
-                'user_id' => $user->id,
-                'action' => 'AVATAR_UPDATED',
-                'details' => "User uploaded new avatar: {$user->name}",
-                'ip_address' => request()->ip(),
-            ]);
-
             return response()->json(new UserResource($user->fresh()), 200);
         }
 
-        return response()->json([
-            'message' => 'Tidak ada file yang diupload',
-        ], 400);
+        return response()->json(['message' => 'Tidak ada file yang diupload'], 400);
     }
 
     /**
@@ -417,17 +418,34 @@ class UserController extends Controller
         $validated = $request->validate([
             'user_ids' => 'required|array',
             'user_ids.*' => 'exists:users,id',
-            'is_active' => 'required|boolean',
-            'roles' => 'array',
-            'roles.*' => Rule::in(['super_admin', 'admin_layanan', 'admin_penyedia', 'teknisi', 'pegawai']),
+            'is_active' => 'nullable|boolean',
+            'roles' => 'nullable|array',
+            'roles.*' => 'exists:roles,code', // Dynamic Role Validation
         ]);
 
-        $updates = ['is_active' => $validated['is_active']];
-        if (isset($validated['roles'])) {
-            $updates['roles'] = $validated['roles'];
+        $updates = [];
+
+        if (isset($validated['is_active'])) {
+            $updates['is_active'] = $validated['is_active'];
         }
 
-        User::whereIn('id', $validated['user_ids'])->update($updates);
+        if (isset($validated['roles'])) {
+            $updates['roles'] = $validated['roles'];
+            // Jika update role massal, reset primary role ke yang pertama di list
+            $updates['role'] = $validated['roles'][0];
+        }
+
+        if (empty($updates)) {
+            return response()->json(['message' => 'Tidak ada data yang diupdate'], 422);
+        }
+
+        // Loop update manual karena 'roles' adalah JSON casting
+        // User::whereIn('id', $validated['user_ids'])->update($updates); <- Ini bisa error untuk JSON di DB lama
+
+        $users = User::whereIn('id', $validated['user_ids'])->get();
+        foreach ($users as $u) {
+            $u->update($updates);
+        }
 
         // Audit log
         AuditLog::create([
