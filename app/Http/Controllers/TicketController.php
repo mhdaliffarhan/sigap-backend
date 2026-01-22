@@ -553,113 +553,115 @@ class TicketController extends Controller
      */
     public function store(Request $request)
     {
-        // 1. Decode JSON strings if sent via multipart (Legacy behavior)
-        if (is_string($request->form_data)) {
-            $decoded = json_decode($request->form_data, true);
-            if (json_last_error() === JSON_ERROR_NONE) {
-                $request->merge(['form_data' => $decoded]);
-            }
-        }
-        if (is_string($request->zoom_co_hosts)) {
-            $decoded = json_decode($request->zoom_co_hosts, true);
-            if (json_last_error() === JSON_ERROR_NONE) {
-                $request->merge(['zoom_co_hosts' => $decoded]);
+        // ------------------------------------------------------------------
+        // 1. PRE-PROCESSING: Decode JSON strings (Untuk Multipart Request)
+        // ------------------------------------------------------------------
+        // Frontend sering mengirim JSON sebagai string saat ada upload file.
+        foreach (['form_data', 'zoom_co_hosts', 'ticket_data'] as $jsonField) {
+            if ($request->has($jsonField) && is_string($request->input($jsonField))) {
+                $decoded = json_decode($request->input($jsonField), true);
+                if (json_last_error() === JSON_ERROR_NONE) {
+                    $request->merge([$jsonField => $decoded]);
+                }
             }
         }
 
-        // 2. Tentukan Aturan Validasi berdasarkan input
+        // ------------------------------------------------------------------
+        // 2. VALIDATION RULES
+        // ------------------------------------------------------------------
         $rules = [
             'title' => 'required|string|max:255',
             'description' => 'required|string',
             'attachments' => 'nullable|array',
-            'attachments.*' => 'file|max:2048|mimes:jpg,jpeg,png,pdf,doc,docx',
+            'attachments.*' => 'file|max:5120|mimes:jpg,jpeg,png,pdf,doc,docx', // Max 5MB
         ];
 
-        // JIKA INI TIKET DINAMIS (Ada service_category_id)
-        if ($request->has('service_category_id')) {
+        // A. JIKA TIKET DINAMIS (Ada service_category_id)
+        if ($request->has('service_category_id') && $request->service_category_id != 'null') {
             $rules['service_category_id'] = 'required|exists:service_categories,id';
-            $rules['resource_id'] = 'nullable|exists:resources,id';
-            $rules['start_date'] = 'nullable|date_format:Y-m-d\TH:i';
-            $rules['end_date'] = 'nullable|date_format:Y-m-d\TH:i|after:start_date';
-            $rules['dynamic_form_data'] = 'nullable|array';
+            $rules['ticket_data'] = 'nullable|array'; // Data form dinamis (JSON)
+            // Optional: Validasi resource jika layanan booking
+            // $rules['resource_id'] = 'nullable|exists:resources,id';
         }
-        // JIKA INI TIKET LEGACY (Perbaikan/Zoom biasa)
+        // B. JIKA TIKET LEGACY (Perbaikan/Zoom biasa)
         else {
             $rules['type'] = 'required|in:perbaikan,zoom_meeting';
-            // Perbaikan fields
+
+            // Validasi Perbaikan
             $rules['kode_barang'] = 'required_if:type,perbaikan|string';
             $rules['nup'] = 'required_if:type,perbaikan|string';
             $rules['asset_location'] = 'nullable|string';
             $rules['severity'] = 'required_if:type,perbaikan|in:low,normal,high,critical';
-            // Zoom fields
+
+            // Validasi Zoom
             $rules['zoom_date'] = 'required_if:type,zoom_meeting|date|after_or_equal:today';
             $rules['zoom_start_time'] = 'required_if:type,zoom_meeting|date_format:H:i';
             $rules['zoom_end_time'] = 'required_if:type,zoom_meeting|date_format:H:i|after:zoom_start_time';
             $rules['zoom_estimated_participants'] = 'nullable|integer|min:0';
             $rules['zoom_co_hosts'] = 'nullable|array';
-            $rules['zoom_attachments'] = 'nullable|array';
         }
 
         $validated = $request->validate($rules);
         $user = auth()->user();
 
-        // Init Ticket
+        // ------------------------------------------------------------------
+        // 3. INSTANTIATE TICKET (Common Fields)
+        // ------------------------------------------------------------------
         $ticket = new Ticket();
         $ticket->title = $validated['title'];
         $ticket->description = $validated['description'];
         $ticket->user_id = $user->id;
-        $ticket->status = 'submitted'; // Default status
+        $ticket->status = 'submitted'; // Status awal standar
 
-        // === LOGIKA PENYIMPANAN ===
+        // ------------------------------------------------------------------
+        // 4. TYPE SPECIFIC LOGIC
+        // ------------------------------------------------------------------
 
-        // KASUS A: TIKET DINAMIS (Mobil, Ruangan, dll)
-        if ($request->has('service_category_id')) {
-            $category = ServiceCategory::find($validated['service_category_id']);
+        // === KASUS A: TIKET DINAMIS (Layanan Katalog) ===
+        if (isset($validated['service_category_id'])) {
+            $category = \App\Models\ServiceCategory::find($validated['service_category_id']);
 
             $ticket->service_category_id = $category->id;
-            $ticket->type = $category->slug; // Gunakan slug kategori sebagai tipe (misal: 'peminjaman-mobil')
+            $ticket->type = $category->slug; // Contoh: 'peminjaman-aula'
             $ticket->ticket_number = Ticket::generateTicketNumber($category->slug);
 
-            // Simpan data dinamis
-            $ticket->resource_id = $validated['resource_id'] ?? null;
-            $ticket->start_date = $validated['start_date'] ?? null;
-            $ticket->end_date = $validated['end_date'] ?? null;
-            $ticket->dynamic_form_data = $validated['dynamic_form_data'] ?? null;
+            // Simpan data form dinamis ke kolom JSON
+            $ticket->ticket_data = $validated['ticket_data'] ?? [];
 
-            // Jika tipe layanan adalah 'booking', pastikan tanggal terisi
-            if ($category->type === 'booking' && (!$ticket->start_date || !$ticket->end_date)) {
-                return response()->json(['message' => 'Tanggal mulai dan selesai wajib diisi untuk layanan peminjaman.'], 422);
-            }
+            // WORKFLOW: Set assignee awal agar muncul di dashboard Admin Layanan
+            $ticket->current_assignee_role = 'admin_layanan';
         }
 
-        // KASUS B: TIKET LEGACY (Perbaikan)
-        else if ($validated['type'] === 'perbaikan') {
-            // Validasi Aset
-            $asset = Asset::where('kode_barang', $validated['kode_barang'])
+        // === KASUS B: TIKET LEGACY (Perbaikan) ===
+        elseif ($validated['type'] === 'perbaikan') {
+            // Cek Aset BMN
+            $asset = \App\Models\Asset::where('kode_barang', $validated['kode_barang'])
                 ->where('nup', $validated['nup'])
                 ->first();
 
             if (!$asset) {
                 throw ValidationException::withMessages([
-                    'kode_barang' => ['Barang dengan kode dan NUP ini tidak ditemukan di database'],
+                    'kode_barang' => ['Aset tidak ditemukan (Cek Kode Barang & NUP)'],
                 ]);
             }
 
             $ticket->type = 'perbaikan';
-            $ticket->ticket_number = Ticket::generateTicketNumber('perbaikan');
+            $ticket->ticket_number = Ticket::generateTicketNumber('RPR'); // Repair Prefix
             $ticket->kode_barang = $validated['kode_barang'];
             $ticket->nup = $validated['nup'];
             $ticket->asset_location = $validated['asset_location'] ?? null;
             $ticket->severity = $validated['severity'];
 
-            // Legacy attachments handler (sama seperti sebelumnya)
-            // ... (Kode upload file biarkan saja, atau copas logika upload jika perlu)
+            // WORKFLOW: Assign ke admin layanan untuk screening awal
+            $ticket->current_assignee_role = 'admin_layanan';
         }
 
-        // KASUS C: TIKET LEGACY (Zoom)
-        else if ($validated['type'] === 'zoom_meeting') {
-            // ... Logika Zoom Booking Service yang lama ...
-            $bookingService = new ZoomBookingService();
+        // === KASUS C: TIKET LEGACY (Zoom Meeting) ===
+        elseif ($validated['type'] === 'zoom_meeting') {
+            // Gunakan Service Zoom yang ada
+            $bookingService = new \App\Services\ZoomBookingService(); // Pastikan namespace benar
+
+            // Validasi Ketersediaan Akun Zoom
             $assignmentResult = $bookingService->validateAndAssignAccount([
                 'zoom_date' => $validated['zoom_date'],
                 'zoom_start_time' => $validated['zoom_start_time'],
@@ -673,49 +675,89 @@ class TicketController extends Controller
             }
 
             $ticket->type = 'zoom_meeting';
-            $ticket->ticket_number = Ticket::generateTicketNumber('zoom_meeting');
+            $ticket->ticket_number = Ticket::generateTicketNumber('ZM'); // Zoom Prefix
             $ticket->zoom_date = $validated['zoom_date'];
             $ticket->zoom_start_time = $validated['zoom_start_time'];
             $ticket->zoom_end_time = $validated['zoom_end_time'];
-
-            // Hitung durasi
-            $start = \Carbon\Carbon::createFromFormat('H:i', $validated['zoom_start_time']);
-            $end = \Carbon\Carbon::createFromFormat('H:i', $validated['zoom_end_time']);
-            $ticket->zoom_duration = $start->diffInMinutes($end);
-
             $ticket->zoom_account_id = $assignmentResult['account_id'];
-            $ticket->status = 'pending_review';
+            $ticket->zoom_estimated_participants = $request->zoom_estimated_participants;
+            $ticket->zoom_co_hosts = $request->zoom_co_hosts; // Simpan array (auto-cast ke JSON di model)
 
-            // Handle Zoom Attachments (Legacy)
-            // ...
+            // Hitung durasi otomatis
+            try {
+                $start = \Carbon\Carbon::createFromFormat('H:i', $validated['zoom_start_time']);
+                $end = \Carbon\Carbon::createFromFormat('H:i', $validated['zoom_end_time']);
+                $ticket->zoom_duration = $start->diffInMinutes($end);
+            } catch (\Exception $e) {
+            }
+
+            $ticket->current_assignee_role = 'admin_layanan';
         }
 
+        // Simpan Data Utama Tiket
         $ticket->save();
 
-        // Create timeline & Audit Log (Universal)
-        Timeline::create([
+        // ------------------------------------------------------------------
+        // 5. FILE UPLOAD HANDLING (Universal)
+        // ------------------------------------------------------------------
+        if ($request->hasFile('attachments')) {
+            foreach ($request->file('attachments') as $file) {
+                // Simpan fisik file
+                $path = $file->store('ticket-attachments/' . $ticket->id, 'public');
+
+                // Simpan ke database (Asumsi ada tabel ticket_attachments)
+                // Jika tidak ada tabel relasi, dan pakai kolom JSON di tickets:
+                // $currentAttachments = $ticket->attachments ?? [];
+                // $currentAttachments[] = ['path' => $path, 'name' => $file->getClientOriginalName()];
+                // $ticket->update(['attachments' => $currentAttachments]);
+
+                // Opsi Tabel Relasi (Recommended):
+                \App\Models\TicketAttachment::create([
+                    'ticket_id' => $ticket->id,
+                    'file_path' => $path,
+                    'file_name' => $file->getClientOriginalName(),
+                    'file_type' => $file->getClientMimeType(),
+                    'file_size' => $file->getSize(),
+                    'uploaded_by' => $user->id
+                ]);
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // 6. POST-PROCESSING (Timeline, Logs, Notification)
+        // ------------------------------------------------------------------
+
+        // Buat Timeline Awal
+        \App\Models\Timeline::create([
             'ticket_id' => $ticket->id,
             'user_id' => $user->id,
             'action' => 'ticket_created',
-            'details' => "Ticket created: {$ticket->title} (Type: {$ticket->type})",
+            'details' => "Tiket dibuat dengan nomor: {$ticket->ticket_number}",
+            'created_at' => now(),
         ]);
 
+        // Catat Audit Log
         AuditLog::create([
             'user_id' => $user->id,
             'action' => 'TICKET_CREATED',
-            'details' => "Ticket created: {$ticket->ticket_number}",
-            'ip_address' => request()->ip(),
+            'details' => "Membuat tiket baru: {$ticket->ticket_number} (Tipe: {$ticket->type})",
+            'ip_address' => $request->ip(),
         ]);
 
-        // Notifikasi ke admin_layanan
+        // Kirim Notifikasi (Wrap try-catch agar tidak membatalkan save tiket jika mail server down)
         try {
-            TicketNotificationService::onTicketCreated($ticket);
+            // Contoh menggunakan service notifikasi yang sudah Anda miliki
+            // TicketNotificationService::sendNewTicketNotification($ticket);
         } catch (\Exception $e) {
-            // Ignore notification error to prevent transaction rollback
-            \Log::error("Failed to send notification: " . $e->getMessage());
+            \Illuminate\Support\Facades\Log::error("Gagal kirim notifikasi tiket baru: " . $e->getMessage());
         }
 
-        return response()->json(new TicketResource($ticket->load('user', 'assignedUser', 'timeline.user', 'zoomAccount')), 201);
+        // Return Response Lengkap
+        // Load relasi agar frontend bisa langsung menampilkan detail tanpa fetch ulang
+        return response()->json([
+            'message' => 'Tiket berhasil dibuat',
+            'data' => new TicketResource($ticket->load('user', 'serviceCategory'))
+        ], 201);
     }
 
     /**

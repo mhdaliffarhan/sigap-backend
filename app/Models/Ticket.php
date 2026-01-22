@@ -51,6 +51,7 @@ class Ticket extends Model
         'status',
         'work_orders_ready', // Flag untuk indicate work orders sudah ready
         'service_category_id',
+        'ticket_data',
         'resource_id',
         'start_date',
         'end_date',
@@ -59,6 +60,7 @@ class Ticket extends Model
     ];
 
     protected $casts = [
+        'ticket_data' => 'array',
         'zoom_co_hosts' => 'array',
         'zoom_attachments' => 'array',
         'attachments' => 'array',
