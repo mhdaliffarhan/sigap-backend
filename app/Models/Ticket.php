@@ -52,6 +52,8 @@ class Ticket extends Model
         'work_orders_ready', // Flag untuk indicate work orders sudah ready
         'service_category_id',
         'ticket_data',
+        'action_data',   // Output PJ (BARU)
+        'is_escalated',  // Status Operan (BARU)
         'resource_id',
         'start_date',
         'end_date',
@@ -61,6 +63,7 @@ class Ticket extends Model
 
     protected $casts = [
         'ticket_data' => 'array',
+        'action_data' => 'array',
         'zoom_co_hosts' => 'array',
         'zoom_attachments' => 'array',
         'attachments' => 'array',
@@ -83,13 +86,6 @@ class Ticket extends Model
         return $this->belongsTo(User::class);
     }
 
-    /**
-     * Get the user assigned to this ticket
-     */
-    public function assignedUser(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'assigned_to');
-    }
 
     /**
      * Get the timeline events
@@ -270,5 +266,25 @@ class Ticket extends Model
     public function resource()
     {
         return $this->belongsTo(Resource::class);
+    }
+
+    // Relasi ke User yang sedang ditugaskan (Personal)
+    public function assignedUser()
+    {
+        return $this->belongsTo(User::class, 'assigned_user_id');
+    }
+
+    // --- RELASI BARU ---
+
+    // Riwayat Transfer / Operan Bola
+    public function transfers()
+    {
+        return $this->hasMany(TicketTransfer::class)->latest();
+    }
+
+    // Timeline Visual
+    public function timelines()
+    {
+        return $this->hasMany(Timeline::class)->latest();
     }
 }

@@ -34,12 +34,19 @@ class ServiceCategoryController extends Controller
             'type' => 'required|in:booking,service,repair',
             'icon' => 'nullable|string',
             'is_active' => 'boolean',
+
+            'handling_role' => 'nullable|string|exists:roles,code',
+            'is_resource_based' => 'boolean',
+
             'form_schema' => 'nullable|array',
+            'action_schema' => 'nullable|array',
             // Validasi dalam schema jika perlu
             // 'form_schema.*.name' => 'required|string', 
         ]);
 
-        $validated['slug'] = Str::slug($validated['name']);
+        if (empty($validated['handling_role'])) {
+            $validated['handling_role'] = 'admin_layanan';
+        }
 
         $category = ServiceCategory::create($validated);
 
@@ -54,16 +61,17 @@ class ServiceCategoryController extends Controller
             'type' => 'required|in:booking,service,repair',
             'icon' => 'nullable|string',
             'is_active' => 'boolean',
+            'is_resource_based' => 'boolean',
             'form_schema' => 'nullable|array',
+            'action_schema' => 'nullable|array',
         ]);
-
-        if ($request->has('name')) {
-            $validated['slug'] = Str::slug($validated['name']);
-        }
 
         $serviceCategory->update($validated);
 
-        return response()->json(['message' => 'Layanan berhasil diperbarui', 'data' => $serviceCategory]);
+        return response()->json([
+            'message' => 'Layanan berhasil diperbarui',
+            'data' => $serviceCategory
+        ]);
     }
 
     public function destroy(ServiceCategory $serviceCategory)

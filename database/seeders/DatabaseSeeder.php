@@ -2,26 +2,25 @@
 
 namespace Database\Seeders;
 
+// use Illuminate\Database\Console\Seeds\WithoutModelEvents;
+use Illuminate\Database\Seeder;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
-use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
 {
-    use WithoutModelEvents;
-
     /**
      * Seed the application's database.
      */
     public function run(): void
     {
-        // Only seed default users
+        $this->call(RoleSeeder::class);
+
         $users = [
             [
                 'name' => 'Super Admin',
                 'email' => 'superadmin@example.com',
-                'password' => Hash::make('password'),
+                'password' => 'password',
                 'roles' => ['super_admin'],
                 'nip' => '199001011990101001',
                 'jabatan' => 'Kepala Sistem IT',
@@ -32,7 +31,7 @@ class DatabaseSeeder extends Seeder
             [
                 'name' => 'Admin Layanan',
                 'email' => 'admin.layanan@example.com',
-                'password' => Hash::make('password'),
+                'password' => 'password',
                 'roles' => ['admin_layanan'],
                 'nip' => '199102021991021001',
                 'jabatan' => 'Admin Layanan',
@@ -43,7 +42,7 @@ class DatabaseSeeder extends Seeder
             [
                 'name' => 'Admin Penyedia',
                 'email' => 'admin.penyedia@example.com',
-                'password' => Hash::make('password'),
+                'password' => 'password',
                 'roles' => ['admin_penyedia'],
                 'nip' => '199103031991031001',
                 'jabatan' => 'Admin Penyedia',
@@ -54,7 +53,7 @@ class DatabaseSeeder extends Seeder
             [
                 'name' => 'Teknisi',
                 'email' => 'teknisi@example.com',
-                'password' => Hash::make('password'),
+                'password' => 'password',
                 'roles' => ['teknisi'],
                 'nip' => '199104041991041001',
                 'jabatan' => 'Teknisi Maintenance',
@@ -65,7 +64,7 @@ class DatabaseSeeder extends Seeder
             [
                 'name' => 'Pegawai Biasa',
                 'email' => 'pegawai@example.com',
-                'password' => Hash::make('password'),
+                'password' => 'password',
                 'roles' => ['pegawai'],
                 'nip' => '199105051991051001',
                 'jabatan' => 'Pegawai Statistik',
@@ -76,7 +75,7 @@ class DatabaseSeeder extends Seeder
             [
                 'name' => 'Multi Role User',
                 'email' => 'multirole@example.com',
-                'password' => Hash::make('password'),
+                'password' => 'password',
                 'roles' => ['admin_penyedia', 'teknisi'],
                 'nip' => '199106061991061001',
                 'jabatan' => 'Admin Penyedia & Teknisi',
@@ -87,23 +86,32 @@ class DatabaseSeeder extends Seeder
         ];
 
         foreach ($users as $userData) {
-            // Set role (single) dari roles dengan priority logic
-            // Untuk multi-role, ambil role pertama yang paling tinggi prioritasnya
-            // Priority: super_admin > admin_layanan > admin_penyedia > teknisi > pegawai
+            $username = explode('@', $userData['email'])[0];
             $rolePriority = ['super_admin', 'admin_layanan', 'admin_penyedia', 'teknisi', 'pegawai'];
-            $primaryRole = 'pegawai'; // default fallback
-            
+            $primaryRole = 'pegawai'; // Fallback default
+
             foreach ($rolePriority as $role) {
                 if (in_array($role, $userData['roles'])) {
                     $primaryRole = $role;
-                    break; // Ambil yang pertama ketemu (prioritas tertinggi)
+                    break;
                 }
             }
-            $userData['role'] = $primaryRole;
 
+            // 3. Simpan / Update User
             User::updateOrCreate(
                 ['email' => $userData['email']],
-                $userData
+                [
+                    'name' => $userData['name'],
+                    'username' => $username,
+                    'password' => Hash::make($userData['password']),
+                    'roles' => $userData['roles'],
+                    'role' => $primaryRole,
+                    'nip' => $userData['nip'],
+                    'jabatan' => $userData['jabatan'],
+                    'unit_kerja' => $userData['unit_kerja'],
+                    'phone' => $userData['phone'],
+                    'is_active' => $userData['is_active'],
+                ]
             );
         }
     }

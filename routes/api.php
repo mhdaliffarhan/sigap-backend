@@ -15,6 +15,8 @@ use App\Http\Controllers\ZoomAccountController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\TicketDiagnosisController;
 use App\Http\Controllers\Auth\SsoController;
+use App\Http\Controllers\TicketActionController;
+use App\Http\Controllers\AvailabilityController;
 
 Route::prefix('auth')->group(function () {
     Route::get('sso-url', [SsoController::class, 'getLoginUrl']);
@@ -48,6 +50,13 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::apiResource('resources', \App\Http\Controllers\ResourceController::class);
 
+    // TICKET ACTIONS (PJ / Admin)
+    Route::post('/tickets/{ticket}/resolve', [TicketActionController::class, 'resolve']);
+    Route::post('/tickets/{ticket}/transfer', [TicketActionController::class, 'transfer']);
+
+    // AVAILABILITY (User)
+    Route::get('/availability/check', [AvailabilityController::class, 'check']);
+    Route::get('/availability/events/{resource}', [AvailabilityController::class, 'getEvents']);
     // Category Management Routes (Disabled - not used, categories table doesn't exist)
     // Route::apiResource('categories', CategoryController::class);
 
