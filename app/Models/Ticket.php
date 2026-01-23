@@ -24,6 +24,7 @@ class Ticket extends Model
         'category_id',
         'user_id',
         'assigned_to',
+        'current_assignee_role',
         'kode_barang',
         'nup',
         'asset_location',
@@ -51,12 +52,12 @@ class Ticket extends Model
         'status',
         'work_orders_ready', // Flag untuk indicate work orders sudah ready
         'service_category_id',
-        'ticket_data',
-        'action_data',   // Output PJ (BARU)
-        'is_escalated',  // Status Operan (BARU)
         'resource_id',
         'start_date',
         'end_date',
+        'ticket_data',
+        'action_data',   // Output PJ (BARU)
+        'is_escalated',  // Status Operan (BARU)
         'dynamic_form_data',
         'current_assignee_role'
     ];

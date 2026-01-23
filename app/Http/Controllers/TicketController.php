@@ -625,6 +625,16 @@ class TicketController extends Controller
             $ticket->type = $category->slug; // Contoh: 'peminjaman-aula'
             $ticket->ticket_number = Ticket::generateTicketNumber($category->slug);
 
+            if ($request->has('resource_id')) {
+                $ticket->resource_id = $request->resource_id;
+            }
+            if ($request->has('start_date')) {
+                $ticket->start_date = $request->start_date;
+            }
+            if ($request->has('end_date')) {
+                $ticket->end_date = $request->end_date;
+            }
+
             // Simpan data form dinamis ke kolom JSON
             $ticket->ticket_data = $validated['ticket_data'] ?? [];
 
