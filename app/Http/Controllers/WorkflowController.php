@@ -17,25 +17,37 @@ class WorkflowController extends Controller
     {
         $user = auth()->user();
 
-        // Ambil role user (support array roles atau single role)
+        // 1. Ambil Role Aktif User
+        // Prioritaskan role yang sedang aktif/switch. Jika user object punya 'role', pakai itu.
+        // Jika user punya banyak role (array), kita cek semuanya.
         $userRoles = is_array($user->roles) ? $user->roles : [$user->role];
 
-        // Cari status ID dari tabel workflow_statuses berdasarkan kode status tiket saat ini
-        // Asumsi: Kita perlu join atau cari id status berdasarkan string 'status' di tiket
-        // Untuk simplifikasi awal, kita anggap status di tiket sudah sesuai dengan 'code' di workflow_statuses
+        // Opsional: Super Admin dianggap bisa melakukan aksi Admin Layanan (God Mode)
+        if (in_array('super_admin', $userRoles)) {
+            $userRoles[] = 'admin_layanan';
+        }
+
+        // 2. Cari ID Status saat ini di tabel workflow_statuses
+        // (Pastikan kode status di tiket sinkron dengan kode di tabel status)
         $currentStatus = \App\Models\WorkflowStatus::where('code', $ticket->status)->first();
 
         if (!$currentStatus) {
+            // Jika status tidak dikenali (misal data legacy), return kosong
             return response()->json(['data' => []]);
         }
 
-        // Cari transisi yang:
-        // 1. Sesuai kategori layanan tiket ini
-        // 2. Dari status tiket saat ini
-        // 3. Trigger role-nya dimiliki oleh user yang login
-        $transitions = WorkflowTransition::where('service_category_id', $ticket->service_category_id)
-            ->where('from_status_id', $currentStatus->id)
+        // 3. Cari Transisi yang Valid
+        // Logic: Cari transisi dari status sekarang, yang boleh di-klik oleh role user ini.
+        // PRIORITAS: 
+        // A. Transisi Spesifik Kategori (service_category_id COCOK)
+        // B. Transisi Global (service_category_id NULL)
+
+        $transitions = WorkflowTransition::where('from_status_id', $currentStatus->id)
             ->whereIn('trigger_role', $userRoles)
+            ->where(function ($query) use ($ticket) {
+                $query->where('service_category_id', $ticket->service_category_id)
+                    ->orWhereNull('service_category_id'); // <--- INI KUNCINYA
+            })
             ->get();
 
         return response()->json([
@@ -43,8 +55,8 @@ class WorkflowController extends Controller
                 return [
                     'id' => $transition->id,
                     'label' => $transition->action_label,
-                    'variant' => $this->getButtonVariant($transition->action_label), // Helper untuk warna tombol
-                    'require_form' => $transition->required_form_schema, // Jika butuh input alasan dll
+                    'variant' => $this->getButtonVariant($transition->action_label),
+                    'require_form' => $transition->required_form_schema, // Form tambahan (Alasan tolak, dll)
                 ];
             })
         ]);

@@ -27,13 +27,13 @@ class TicketResource extends JsonResource
             // --- FIELD BARU UNTUK LAYANAN DINAMIS ---
             'service_category_id' => $this->service_category_id,
             'service_category' => $this->whenLoaded('serviceCategory'),
-
             'resource_id' => $this->resource_id,
             'resource' => $this->whenLoaded('resource'),
-
             'start_date' => $this->start_date,
             'end_date' => $this->end_date,
             'dynamic_form_data' => $this->dynamic_form_data, // <-- Ini isian form (supir, penumpang, dll)
+            'action_data' => $this->action_data,
+            'action_data' => $this->action_data,
             'current_assignee_role' => $this->current_assignee_role,
             // ----------------------------------------
 
@@ -41,12 +41,10 @@ class TicketResource extends JsonResource
             'kode_barang' => $this->kode_barang,
             'nup' => $this->nup,
             'asset_location' => $this->asset_location,
-
             'zoom_date' => $this->zoom_date,
             'zoom_start_time' => $this->zoom_start_time,
             'zoom_end_time' => $this->zoom_end_time,
             'zoom_link' => $this->zoom_meeting_link,
-            // ... tambahkan field legacy lain jika perlu
 
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
@@ -55,6 +53,8 @@ class TicketResource extends JsonResource
             'user' => new UserResource($this->whenLoaded('user')),
             'assigned_user' => new UserResource($this->whenLoaded('assignedUser')),
             'attachments' => $this->attachments,
+            'timeline' => TimelineResource::collection($this->whenLoaded('timeline')),
+            'comments' => CommentResource::collection($this->whenLoaded('comments')),
         ];
     }
 
