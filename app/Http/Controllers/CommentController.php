@@ -27,7 +27,7 @@ class CommentController extends Controller
         $this->authorizeTicketAccess($ticket);
 
         $perPage = min((int)$request->get('per_page', 30), 100); // max 100 per page
-        
+
         // Ambil comments dengan pagination, ordered by DESC (terbaru first)
         // Eager load user dan replies dengan user mereka
         $comments = $ticket->comments()
@@ -97,15 +97,20 @@ class CommentController extends Controller
         ]);
 
         // Send notification
-        $parentCommentUserId = null;
-        if ($validated['parent_comment_id'] ?? null) {
-            $parentComment = Comment::find($validated['parent_comment_id']);
-            $parentCommentUserId = $parentComment?->user_id;
+        try {
+            $parentCommentUserId = null;
+            if ($validated['parent_comment_id'] ?? null) {
+                $parentComment = Comment::find($validated['parent_comment_id']);
+                $parentCommentUserId = $parentComment?->user_id;
+            }
+
+            // Panggil Service
+            TicketNotificationService::onCommentCreated($ticket, $user->id, $parentCommentUserId);
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error("Gagal kirim notif Komentar: " . $e->getMessage());
         }
-        TicketNotificationService::onCommentCreated($ticket, $user->id, $parentCommentUserId);
 
         return response()->json(new CommentResource($comment), 201);
-
     }
 
     /**
@@ -118,7 +123,7 @@ class CommentController extends Controller
     private function authorizeTicketAccess(Ticket $ticket)
     {
         $user = auth()->user();
-        
+
         // Super admin bisa akses semua
         if ($this->userHasRole($user, 'super_admin')) {
             return;

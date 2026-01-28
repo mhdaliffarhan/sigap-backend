@@ -555,10 +555,7 @@ class TicketController extends Controller
      */
     public function store(Request $request)
     {
-        // ------------------------------------------------------------------
-        // 1. PRE-PROCESSING: Decode JSON strings (Untuk Multipart Request)
-        // ------------------------------------------------------------------
-        // Frontend sering mengirim JSON sebagai string saat ada upload file.
+        // 1. PRE-PROCESSING
         foreach (['form_data', 'zoom_co_hosts', 'ticket_data'] as $jsonField) {
             if ($request->has($jsonField) && is_string($request->input($jsonField))) {
                 $decoded = json_decode($request->input($jsonField), true);
@@ -568,9 +565,7 @@ class TicketController extends Controller
             }
         }
 
-        // ------------------------------------------------------------------
-        // 2. VALIDATION RULES
-        // ------------------------------------------------------------------
+        // 2. VALIDATION
         $rules = [
             'title' => 'required|string|max:255',
             'description' => 'required|string',
@@ -579,49 +574,42 @@ class TicketController extends Controller
             'attachments.*' => 'file|max:5120|mimes:jpg,jpeg,png,pdf,doc,docx',
         ];
 
-        // A. JIKA TIKET DINAMIS (Ada service_category_id)
+        // Validasi Dinamis vs Legacy
         if ($request->has('service_category_id') && $request->service_category_id != 'null') {
             $rules['service_category_id'] = 'required|exists:service_categories,id';
-            $rules['ticket_data'] = 'nullable|array'; // Data form dinamis (JSON)
-            // Optional: Validasi resource jika layanan booking
+            $rules['ticket_data'] = 'nullable|array';
+
+            // Validasi Booking Resource
             if ($request->has('resource_id')) {
                 $rules['resource_id'] = 'required|exists:resources,id';
                 $rules['start_date'] = 'required|date|after_or_equal:today';
                 $rules['end_date'] = 'required|date|after:start_date';
             }
-        }
-        // B. JIKA TIKET LEGACY (Perbaikan/Zoom biasa)
-        else {
+        } else {
             $rules['type'] = 'required|in:perbaikan,zoom_meeting';
-
-            // Validasi Perbaikan
-            $rules['kode_barang'] = 'required_if:type,perbaikan|string';
-            $rules['nup'] = 'required_if:type,perbaikan|string';
+            // Validasi Legacy...
+            $rules['kode_barang'] = 'required_if:type,perbaikan';
+            $rules['nup'] = 'required_if:type,perbaikan';
             $rules['asset_location'] = 'nullable|string';
-            $rules['severity'] = 'required_if:type,perbaikan|in:low,normal,high,critical';
+            $rules['severity'] = 'required_if:type,perbaikan';
 
-            // Validasi Zoom
             $rules['zoom_date'] = 'required_if:type,zoom_meeting|date|after_or_equal:today';
-            $rules['zoom_start_time'] = 'required_if:type,zoom_meeting|date_format:H:i';
-            $rules['zoom_end_time'] = 'required_if:type,zoom_meeting|date_format:H:i|after:zoom_start_time';
-            $rules['zoom_estimated_participants'] = 'nullable|integer|min:0';
-            $rules['zoom_co_hosts'] = 'nullable|array';
+            $rules['zoom_start_time'] = 'required_if:type,zoom_meeting';
+            $rules['zoom_end_time'] = 'required_if:type,zoom_meeting|after:zoom_start_time';
         }
 
         $validated = $request->validate($rules);
         $user = auth()->user();
 
-        // ------------------------------------------------------------------
-        // 3. INSTANTIATE TICKET (Common Fields)
-        // ------------------------------------------------------------------
-        DB::beginTransaction(); // Pakai transaksi agar aman
+        // 3. START TRANSACTION
+        DB::beginTransaction();
         try {
             $ticket = new Ticket();
             $ticket->title = $validated['title'];
             $ticket->description = $validated['description'];
             $ticket->priority = $validated['priority'] ?? 'medium';
             $ticket->user_id = $user->id;
-            $ticket->status = 'submitted';
+            $ticket->status = 'submitted'; // Default start status
 
             // --- A. TIKET DINAMIS ---
             if (isset($validated['service_category_id'])) {
@@ -629,14 +617,21 @@ class TicketController extends Controller
                 $ticket->service_category_id = $category->id;
                 $ticket->type = $category->slug;
                 $ticket->ticket_number = Ticket::generateTicketNumber($category->slug);
-                $ticket->current_assignee_role = $category->handling_role ?? 'admin_layanan';
 
-                // Data Booking
+                // 1. ALGORITMA ASSIGNMENT
+                // Pastikan class ini diimport: use App\Services\TicketAssignmentService;
+                $assignmentService = new \App\Services\TicketAssignmentService();
+                $assignmentResult = $assignmentService->determineAssignee($category);
+
+                $ticket->current_assignee_role = $assignmentResult['current_assignee_role'];
+                $ticket->assigned_to = $assignmentResult['assigned_to'];
+                $ticket->status = $assignmentResult['status']; // Bisa 'assigned' atau 'submitted'
+
+                // 2. DATA BOOKING (Resource)
                 if ($request->has('resource_id')) {
-                    // **VALIDASI BENTROK (Double Booking Check) di Backend**
-                    $hasConflict = Ticket::where('resource_id', $request->resource_id)
-                        ->where('status', '!=', 'cancelled') // Abaikan yang batal
-                        ->where('status', '!=', 'rejected')
+                    // Validasi Bentrok (Double Booking Check)
+                    $approvedConflict = Ticket::where('resource_id', $request->resource_id)
+                        ->whereIn('status', ['approved', 'assigned', 'in_progress'])
                         ->where(function ($q) use ($request) {
                             $q->whereBetween('start_date', [$request->start_date, $request->end_date])
                                 ->orWhereBetween('end_date', [$request->start_date, $request->end_date])
@@ -644,20 +639,10 @@ class TicketController extends Controller
                                     $sub->where('start_date', '<=', $request->start_date)
                                         ->where('end_date', '>=', $request->end_date);
                                 });
-                        })
-                        ->exists();
-
-                    // Jika bentrok, tapi user maksa (Frontend kirim flag force), kita bisa handle disini
-                    // Tapi defaultnya kita reject jika sudah ada yang approved
-                    $approvedConflict = Ticket::where('resource_id', $request->resource_id)
-                        ->whereIn('status', ['approved', 'assigned', 'in_progress'])
-                        ->where(function ($q) use ($request) {
-                            $q->whereBetween('start_date', [$request->start_date, $request->end_date])
-                                ->orWhereBetween('end_date', [$request->start_date, $request->end_date]);
                         })->exists();
 
                     if ($approvedConflict) {
-                        throw ValidationException::withMessages(['resource_id' => 'Jadwal ini sudah dibooking dan disetujui.']);
+                        throw ValidationException::withMessages(['resource_id' => 'Jadwal ini sudah dibooking dan disetujui tiket lain.']);
                     }
 
                     $ticket->resource_id = $request->resource_id;
@@ -669,23 +654,29 @@ class TicketController extends Controller
             }
             // --- B. TIKET LEGACY ---
             else {
-                // ... (Logic legacy sama seperti sebelumnya) ...
                 if ($validated['type'] === 'perbaikan') {
                     $ticket->type = 'perbaikan';
                     $ticket->ticket_number = Ticket::generateTicketNumber('RPR');
                     $ticket->kode_barang = $validated['kode_barang'];
                     $ticket->nup = $validated['nup'];
+                    $ticket->asset_location = $validated['asset_location'] ?? null;
                     $ticket->severity = $validated['severity'];
                     $ticket->current_assignee_role = 'admin_layanan';
                 } elseif ($validated['type'] === 'zoom_meeting') {
-                    // Logic zoom booking service...
                     $ticket->type = 'zoom_meeting';
                     $ticket->ticket_number = Ticket::generateTicketNumber('ZM');
                     $ticket->zoom_date = $validated['zoom_date'];
                     $ticket->zoom_start_time = $validated['zoom_start_time'];
                     $ticket->zoom_end_time = $validated['zoom_end_time'];
                     $ticket->current_assignee_role = 'admin_layanan';
-                    // ... (lanjutkan logic zoom) ...
+
+                    // Hitung durasi (Fix: Hapus notifikasi duplikat disini)
+                    try {
+                        $start = \Carbon\Carbon::createFromFormat('H:i', $validated['zoom_start_time']);
+                        $end = \Carbon\Carbon::createFromFormat('H:i', $validated['zoom_end_time']);
+                        $ticket->zoom_duration = $start->diffInMinutes($end);
+                    } catch (\Exception $e) {
+                    }
                 }
             }
 
@@ -696,8 +687,6 @@ class TicketController extends Controller
                 $attachmentsData = [];
                 foreach ($request->file('attachments') as $file) {
                     $path = $file->store('ticket-attachments/' . $ticket->id, 'public');
-                    // Jika ada tabel ticket_attachments, pakai itu. Jika tidak, simpan array JSON di ticket
-                    // Asumsi: Pakai JSON di ticket table kolom 'attachments' (sesuai migrasi Anda)
                     $attachmentsData[] = [
                         'name' => $file->getClientOriginalName(),
                         'url' => asset('storage/' . $path),
@@ -710,13 +699,32 @@ class TicketController extends Controller
                 $ticket->save();
             }
 
-            // 5. TIMELINE & LOG
+            // 5. TIMELINE & LOGS
+
+            // A. Timeline Pembuatan (Selalu dibuat)
             Timeline::create([
                 'ticket_id' => $ticket->id,
                 'user_id' => $user->id,
                 'action' => 'ticket_created',
                 'details' => "Tiket dibuat dengan nomor: {$ticket->ticket_number}",
             ]);
+
+            // B. Timeline Auto-Assign (Hanya jika dapat PJ otomatis)
+            if ($ticket->assigned_to) {
+                Timeline::create([
+                    'ticket_id' => $ticket->id,
+                    'user_id' => null, // System Action
+                    'action' => 'auto_assigned',
+                    'details' => "Sistem menugaskan tiket otomatis ke: " . $ticket->assignedUser->name,
+                ]);
+
+                // Notif Khusus ke Teknisi yang terpilih
+                try {
+                    TicketNotificationService::onTicketAssigned($ticket);
+                } catch (\Exception $e) {
+                    \Log::error("Gagal kirim notif assign: " . $e->getMessage());
+                }
+            }
 
             AuditLog::create([
                 'user_id' => $user->id,
@@ -725,13 +733,14 @@ class TicketController extends Controller
                 'ip_address' => $request->ip(),
             ]);
 
-            DB::commit(); // Simpan Data Permanen
+            DB::commit();
 
-            // 6. NOTIFIKASI (Di Luar Transaksi DB agar tidak rollback jika mail error)
+            // 6. GLOBAL NOTIFICATION (Ticket Created)
+            // Ini akan mengirim ke Admin/PJ Role + Konfirmasi ke User
             try {
                 TicketNotificationService::onTicketCreated($ticket);
             } catch (\Exception $e) {
-                \Illuminate\Support\Facades\Log::error("Notif Error: " . $e->getMessage());
+                \Log::error("Notif Created Error: " . $e->getMessage());
             }
 
             return response()->json([
@@ -739,7 +748,7 @@ class TicketController extends Controller
                 'data' => new TicketResource($ticket->load('user', 'serviceCategory'))
             ], 201);
         } catch (\Exception $e) {
-            DB::rollBack(); // Batalkan semua jika error
+            DB::rollBack();
             throw $e;
         }
     }
@@ -805,7 +814,11 @@ class TicketController extends Controller
         ]);
 
         // Notifikasi ke teknisi dan pelapor
-        TicketNotificationService::onTicketAssigned($ticket);
+        try {
+            TicketNotificationService::onTicketAssigned($ticket);
+        } catch (\Exception $e) {
+            \Log::error("Notif Assign Error: " . $e->getMessage());
+        }
 
         return new TicketResource($ticket->load('user', 'assignedUser', 'timeline.user', 'zoomAccount'));
     }

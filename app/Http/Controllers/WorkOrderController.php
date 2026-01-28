@@ -52,14 +52,14 @@ class WorkOrderController extends Controller
                     $ticketQ->where('ticket_number', 'like', "%{$search}%")
                         ->orWhere('title', 'like', "%{$search}%");
                 })
-                // Search in items JSON (sparepart names)
-                ->orWhere('items', 'like', "%{$search}%")
-                // Search in vendor fields
-                ->orWhere('vendor_name', 'like', "%{$search}%")
-                ->orWhere('vendor_description', 'like', "%{$search}%")
-                // Search in license fields
-                ->orWhere('license_name', 'like', "%{$search}%")
-                ->orWhere('license_description', 'like', "%{$search}%");
+                    // Search in items JSON (sparepart names)
+                    ->orWhere('items', 'like', "%{$search}%")
+                    // Search in vendor fields
+                    ->orWhere('vendor_name', 'like', "%{$search}%")
+                    ->orWhere('vendor_description', 'like', "%{$search}%")
+                    // Search in license fields
+                    ->orWhere('license_name', 'like', "%{$search}%")
+                    ->orWhere('license_description', 'like', "%{$search}%");
             });
         }
 
@@ -353,7 +353,7 @@ class WorkOrderController extends Controller
         if (!$workOrder->canTransitionTo($newStatus)) {
             return response()->json([
                 'success' => false,
-                'message' => $oldStatus === $newStatus 
+                'message' => $oldStatus === $newStatus
                     ? 'Status sudah ' . WorkOrder::getStatusLabel($oldStatus)
                     : "Tidak dapat mengubah status dari {$oldStatus} ke {$newStatus}",
                 'current_status' => $oldStatus,
@@ -412,15 +412,18 @@ class WorkOrderController extends Controller
             ],
         ]);
 
-        // Send notification to teknisi yang buat work order
-        $ticket = $workOrder->ticket;
-        if ($ticket && $workOrder->created_by) {
-            TicketNotificationService::onWorkOrderStatusChanged(
-                $ticket,
-                $workOrder->created_by,
-                $oldStatus,
-                $newStatus
-            );
+        try {
+            $ticket = $workOrder->ticket;
+            if ($ticket && $workOrder->created_by) {
+                TicketNotificationService::onWorkOrderStatusChanged(
+                    $ticket,
+                    $workOrder->created_by,
+                    $oldStatus,
+                    $newStatus
+                );
+            }
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error("Gagal kirim notif WO Status: " . $e->getMessage());
         }
 
         return response()->json([
@@ -436,9 +439,7 @@ class WorkOrderController extends Controller
     private function checkAndUpdateTicketWorkOrdersReady(WorkOrder $workOrder): void
     {
         $ticket = $workOrder->ticket;
-        if (!$ticket) {
-            return;
-        }
+        if (!$ticket) return;
 
         // Check if all work orders for this ticket are completed
         $allWorkOrdersCompleted = !WorkOrder::where('ticket_id', $ticket->id)
@@ -449,9 +450,13 @@ class WorkOrderController extends Controller
             $ticket->work_orders_ready = true;
             $ticket->save();
 
-            // Notifikasi ke teknisi bahwa semua work orders sudah selesai
-            if ($ticket->assigned_to) {
-                TicketNotificationService::onAllWorkOrdersCompleted($ticket, $ticket->assigned_to);
+            // --- UPDATE NOTIFIKASI AMAN ---
+            try {
+                if ($ticket->assigned_to) {
+                    TicketNotificationService::onAllWorkOrdersCompleted($ticket, $ticket->assigned_to);
+                }
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::error("Gagal kirim notif All WO Completed: " . $e->getMessage());
             }
         }
     }
@@ -571,7 +576,7 @@ class WorkOrderController extends Controller
             })
             ->with(['user', 'assignedUser', 'workOrders' => function ($q) {
                 $q->where('status', 'completed')
-                  ->orderBy('completed_at', 'desc');
+                    ->orderBy('completed_at', 'desc');
             }]);
 
         // Search
@@ -599,12 +604,12 @@ class WorkOrderController extends Controller
 
         // Transform data - 1 entry per tiket
         $data = $tickets->map(function ($ticket) {
-            
+
             $formData = is_string($ticket->form_data) ? json_decode($ticket->form_data, true) : ($ticket->form_data ?? []);
-            
+
             $assetCode = $formData['assetCode'] ?? $formData['kode_barang'] ?? $ticket->kode_barang ?? null;
             $assetNup = $formData['assetNUP'] ?? $formData['nup'] ?? $ticket->nup ?? null;
-            
+
             // Hitung berapa kali aset ini sudah dirawat (tiket berbeda dengan NUP sama)
             $maintenanceCount = 0;
             if ($assetNup) {
@@ -619,13 +624,13 @@ class WorkOrderController extends Controller
 
             // Ambil completed work order terakhir untuk tanggal selesai (jika ada)
             $latestWo = $ticket->workOrders->first();
-            
+
             // Hitung total work orders completed untuk tiket ini
             $workOrderCount = $ticket->workOrders->count();
-            
+
             // Get teknisi dari assignedTo
-            $technicianName = $ticket->assignedUser?->name 
-                ?? $latestWo?->createdBy?->name 
+            $technicianName = $ticket->assignedUser?->name
+                ?? $latestWo?->createdBy?->name
                 ?? null;
 
             return [
@@ -676,17 +681,17 @@ class WorkOrderController extends Controller
         $ticket->load(['user', 'diagnosis.technician', 'assignedUser', 'workOrders' => function ($q) {
             $q->with('createdBy')->orderBy('completed_at', 'asc');
         }]);
-        
+
         $formData = is_string($ticket->form_data) ? json_decode($ticket->form_data, true) : ($ticket->form_data ?? []);
-        
+
         // Get asset info
         $assetCode = $formData['assetCode'] ?? $formData['kode_barang'] ?? $ticket->kode_barang ?? null;
         $assetNup = $formData['assetNUP'] ?? $formData['nup'] ?? $ticket->nup ?? null;
-        
+
         // Get related tickets (same NUP, different ticket) - semua tiket perbaikan
         $relatedTickets = [];
         $maintenanceCount = 0;
-        
+
         if ($assetNup) {
             $relatedTicketQuery = Ticket::where('type', 'perbaikan')
                 ->where('id', '!=', $ticket->id)
@@ -698,10 +703,10 @@ class WorkOrderController extends Controller
                 })
                 ->orderBy('created_at', 'desc')
                 ->get();
-            
+
             // Hitung total tiket dengan aset yang sama (termasuk tiket ini)
             $maintenanceCount = $relatedTicketQuery->count() + 1;
-            
+
             $relatedTickets = $relatedTicketQuery->map(fn($t) => [
                 'id' => $t->id,
                 'ticketNumber' => $t->ticket_number,
@@ -733,7 +738,7 @@ class WorkOrderController extends Controller
         // Ambil semua work orders (completed atau tidak)
         $allWorkOrders = $ticket->workOrders;
         $completedWorkOrders = $allWorkOrders->where('status', 'completed');
-        
+
         // Spareparts - gabungkan semua items dari WO type=sparepart yang completed
         $allSpareparts = [];
         foreach ($completedWorkOrders->where('type', 'sparepart') as $wo) {
@@ -748,7 +753,7 @@ class WorkOrderController extends Controller
                 ];
             }
         }
-        
+
         // Vendors - setiap vendor punya catatan penyelesaian masing-masing
         $allVendors = [];
         foreach ($completedWorkOrders->where('type', 'vendor') as $wo) {
@@ -761,7 +766,7 @@ class WorkOrderController extends Controller
                 'technicianName' => $wo->createdBy?->name,
             ];
         }
-        
+
         // Licenses
         $allLicenses = [];
         foreach ($completedWorkOrders->where('type', 'license') as $wo) {
@@ -772,7 +777,7 @@ class WorkOrderController extends Controller
                 'technicianName' => $wo->createdBy?->name,
             ];
         }
-        
+
         // Pending work orders (belum completed, kecualikan unsuccessful)
         $pendingWorkOrders = $allWorkOrders->whereNotIn('status', ['completed', 'unsuccessful'])->map(fn($wo) => [
             'id' => $wo->id,
@@ -854,7 +859,7 @@ class WorkOrderController extends Controller
             $ticket = $wo->ticket;
             $formData = is_string($ticket?->form_data) ? json_decode($ticket->form_data, true) : ($ticket?->form_data ?? []);
             $diagnosis = $ticket?->diagnosis;
-            
+
             // Parse items JSON
             $items = $wo->items;
             if (is_string($items)) {
@@ -892,13 +897,25 @@ class WorkOrderController extends Controller
 
         // Header
         $headers = [
-            'No', 'No. Tiket', 'Judul Tiket', 'Kode Aset', 'NUP', 
-            'Pelapor', 'Teknisi', 'Masalah', 
-            'Dapat Diperbaiki', 'Catatan Teknisi', 'Suku Cadang', 
-            'Nama Vendor', 'Deskripsi Vendor', 'Nama Lisensi', 
-            'Deskripsi Lisensi', 'Catatan Penyelesaian', 'Tanggal Selesai'
+            'No',
+            'No. Tiket',
+            'Judul Tiket',
+            'Kode Aset',
+            'NUP',
+            'Pelapor',
+            'Teknisi',
+            'Masalah',
+            'Dapat Diperbaiki',
+            'Catatan Teknisi',
+            'Suku Cadang',
+            'Nama Vendor',
+            'Deskripsi Vendor',
+            'Nama Lisensi',
+            'Deskripsi Lisensi',
+            'Catatan Penyelesaian',
+            'Tanggal Selesai'
         ];
-        
+
         $col = 'A';
         foreach ($headers as $header) {
             $sheet->setCellValue($col . '1', $header);
@@ -940,9 +957,9 @@ class WorkOrderController extends Controller
 
         // Stream response sebagai Excel
         $filename = 'kartu_kendali_' . date('Y-m-d_His') . '.xlsx';
-        
+
         $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
-        
+
         return response()->streamDownload(function () use ($writer) {
             $writer->save('php://output');
         }, $filename, [

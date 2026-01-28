@@ -34,6 +34,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Profile routes
     Route::get('/profile', [UserController::class, 'getCurrentUser']);
     Route::put('/profile', [UserController::class, 'updateProfile']);
+    Route::post('/profile/toggle-availability', [UserController::class, 'toggleAvailability']);
     Route::post('/change-password', [UserController::class, 'changePassword']);
     Route::post('/upload-avatar', [UserController::class, 'uploadAvatar']);
     Route::post('/change-role', [UserController::class, 'changeRole']);

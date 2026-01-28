@@ -6,6 +6,7 @@ use App\Models\Ticket;
 use App\Models\TicketTransfer;
 use App\Models\Timeline;
 use App\Models\AuditLog;
+use App\Services\TicketNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
@@ -19,21 +20,20 @@ class TicketActionController extends Controller
   {
     $user = auth()->user();
 
-    // 1. Validasi Hak Akses (Apakah user ini PJ yang berhak?)
-    // Cek apakah Role user saat ini sesuai dengan current_assignee_role tiket
-    // ATAU apakah user ini ditunjuk spesifik (assigned_user_id)
+    // 1. Validasi Hak Akses
     $userRoles = is_array($user->roles) ? $user->roles : json_decode($user->roles, true);
+    // Support string role legacy
+    if (is_string($user->roles)) $userRoles = [$user->role];
 
-    // Cek sederhana: apakah salah satu role user cocok dengan assignee tiket
-    if (!in_array($ticket->current_assignee_role, $userRoles)) {
+    if (!in_array($ticket->current_assignee_role, $userRoles) && $ticket->assigned_to !== $user->id) {
       return response()->json(['message' => 'Anda tidak memiliki akses untuk mengeksekusi tiket ini.'], 403);
     }
 
     // 2. Ambil Schema Action dari Layanan
     $service = $ticket->serviceCategory;
-    $actionSchema = $service->action_schema;
+    $actionSchema = $service->action_schema ?? [];
 
-    // 3. Validasi Input Dinamis (Jika ada schema)
+    // 3. Validasi Input Dinamis
     if ($actionSchema && count($actionSchema) > 0) {
       $dynamicRules = [];
       foreach ($actionSchema as $field) {
@@ -42,15 +42,16 @@ class TicketActionController extends Controller
         }
       }
 
-      // Validasi data yang dikirim PJ
       $request->validate(array_merge([
         'notes' => 'nullable|string',
         'action_data' => 'required|array'
       ], $dynamicRules));
     }
 
+    $oldStatus = $ticket->status;
+
     // 4. Update Tiket
-    $ticket->status = 'resolved'; // Atau 'completed' tergantung flow
+    $ticket->status = 'resolved';
     $ticket->action_data = $request->action_data;
     $ticket->save();
 
@@ -69,6 +70,13 @@ class TicketActionController extends Controller
       'details' => "Resolved Ticket {$ticket->ticket_number}",
       'ip_address' => $request->ip()
     ]);
+
+    // 6. NOTIFIKASI
+    try {
+      TicketNotificationService::onStatusChanged($ticket, $oldStatus, 'resolved');
+    } catch (\Exception $e) {
+      \Log::error("Gagal kirim notif resolve: " . $e->getMessage());
+    }
 
     return response()->json(['message' => 'Tiket berhasil diselesaikan', 'data' => $ticket]);
   }

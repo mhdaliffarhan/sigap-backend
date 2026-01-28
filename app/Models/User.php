@@ -28,6 +28,7 @@ class User extends Authenticatable
         'unit_kerja',
         'phone',
         'avatar',
+        'is_on_leave',
         'role',
         'roles',
         'is_active',
@@ -56,8 +57,28 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'roles' => 'array',
+            'is_on_leave' => 'boolean',
             'is_active' => 'boolean',
             'locked_until' => 'datetime',
         ];
+    }
+
+    // Cek apakah user sedang cuti HARI 
+
+    public function isOnLeave(): bool
+    {
+        return (bool) $this->is_on_leave;
+    }
+
+    // Relasi ke Tiket yang sedang dikerjakan (untuk hitung beban kerja)
+    public function activeTickets()
+    {
+        return $this->hasMany(Ticket::class, 'assigned_to')
+            ->whereIn('status', ['assigned', 'in_progress', 'on_hold', 'waiting_for_pegawai']);
+    }
+
+    public function assignedTickets()
+    {
+        return $this->hasMany(Ticket::class, 'assigned_to');
     }
 }

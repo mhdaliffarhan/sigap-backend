@@ -457,4 +457,21 @@ class UserController extends Controller
 
         return response()->json(['message' => 'Users updated successfully']);
     }
+
+    public function toggleAvailability(Request $request)
+    {
+        $user = auth()->user();
+
+        // Toggle status (jika true jadi false, jika false jadi true)
+        $user->is_on_leave = !$user->is_on_leave;
+        $user->save();
+
+        $statusText = $user->is_on_leave ? 'Sedang Cuti (Tidak Menerima Tiket)' : 'Aktif (Siap Menerima Tiket)';
+
+        return response()->json([
+            'message' => "Status berhasil diubah menjadi: $statusText",
+            'is_on_leave' => $user->is_on_leave,
+            'user' => new \App\Http\Resources\UserResource($user)
+        ]);
+    }
 }

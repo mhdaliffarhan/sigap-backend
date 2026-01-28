@@ -118,11 +118,11 @@ class TicketDiagnosisController extends Controller
         // If repair_type is unrepairable, update asset condition
         if ($validated['repair_type'] === 'unrepairable' && isset($validated['asset_condition_change'])) {
             $asset = Asset::findByCodeAndNup($ticket->kode_barang, $ticket->nup);
-            
+
             if ($asset) {
                 $oldCondition = $asset->kondisi;
                 $newCondition = $validated['asset_condition_change'];
-                
+
                 // Update asset condition
                 $asset->update(['kondisi' => $newCondition]);
 
@@ -136,7 +136,7 @@ class TicketDiagnosisController extends Controller
 
                 // Send notification to all superadmins
                 $superAdmins = User::where('role', 'super_admin')->get();
-                
+
                 foreach ($superAdmins as $admin) {
                     Notification::create([
                         'user_id' => $admin->id,
@@ -189,7 +189,11 @@ class TicketDiagnosisController extends Controller
         ]);
 
         // Send notification
-        TicketNotificationService::onDiagnosisCreated($ticket, $validated['repair_type']);
+        try {
+            TicketNotificationService::onDiagnosisCreated($ticket, $validated['repair_type']);
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error("Gagal kirim notif Diagnosis: " . $e->getMessage());
+        }
 
         return response()->json([
             'success' => true,
@@ -235,7 +239,7 @@ class TicketDiagnosisController extends Controller
      */
     private function getRepairTypeLabel(string $repairType): string
     {
-        return match($repairType) {
+        return match ($repairType) {
             'direct_repair' => 'Bisa diperbaiki langsung',
             'need_sparepart' => 'Butuh sparepart',
             'need_vendor' => 'Butuh vendor',
