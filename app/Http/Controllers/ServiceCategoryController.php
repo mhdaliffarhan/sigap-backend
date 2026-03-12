@@ -31,7 +31,7 @@ class ServiceCategoryController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'type' => 'required|in:booking,service,repair',
+            'type' => 'required|in:booking,repair,general',
             'icon' => 'nullable|string',
             'is_active' => 'boolean',
 
@@ -40,9 +40,19 @@ class ServiceCategoryController extends Controller
 
             'form_schema' => 'nullable|array',
             'action_schema' => 'nullable|array',
-            // Validasi dalam schema jika perlu
-            // 'form_schema.*.name' => 'required|string', 
+
+            // Konfigurasi Assignment
+            'target_role' => 'nullable|string',
+            'assignment_type' => 'required|in:auto,manual,direct',
+            'default_assignee_id' => 'nullable|required_if:assignment_type,direct|exists:users,id',
         ]);
+
+        $validated['slug'] = Str::slug($validated['name']);
+
+        // Pastikan default_assignee_id null jika bukan direct
+        if ($validated['assignment_type'] !== 'direct') {
+            $validated['default_assignee_id'] = null;
+        }
 
         if (empty($validated['handling_role'])) {
             $validated['handling_role'] = 'admin_layanan';
@@ -64,7 +74,19 @@ class ServiceCategoryController extends Controller
             'is_resource_based' => 'boolean',
             'form_schema' => 'nullable|array',
             'action_schema' => 'nullable|array',
+            'target_role' => 'nullable|string',
+            'assignment_type' => 'in:auto,manual,direct',
+            'default_assignee_id' => 'nullable|required_if:assignment_type,direct|exists:users,id',
         ]);
+
+        if (isset($validated['name'])) {
+            $validated['slug'] = Str::slug($validated['name']);
+        }
+
+        // Reset assignee jika type berubah bukan direct
+        if (isset($validated['assignment_type']) && $validated['assignment_type'] !== 'direct') {
+            $validated['default_assignee_id'] = null;
+        }
 
         $serviceCategory->update($validated);
 
