@@ -156,4 +156,14 @@ class SsoController extends Controller
       ], 500);
     }
   }
+
+  /**
+   * Logout Handler: Redirect back to frontend
+   * Used to fix 404 error when redirecting to auth/sso-logout
+   */
+  public function logout(Request $request)
+  {
+    $redirectUri = $request->query('redirect_uri') ?? env('FRONTEND_URL', 'http://localhost:3000');
+    return redirect($redirectUri);
+  }
 }

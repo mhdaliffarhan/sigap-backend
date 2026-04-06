@@ -42,6 +42,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // User Management Routes (admin only - will add middleware)
     Route::apiResource('users', UserController::class);
+    Route::post('/users/{user}/reset-password', [UserController::class, 'adminResetPassword']);
     Route::patch('/users/{user}/roles', [UserController::class, 'updateRoles']);
     Route::post('/users/bulk/update', [UserController::class, 'bulkUpdate']);
 

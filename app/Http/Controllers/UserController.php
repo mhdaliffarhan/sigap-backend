@@ -474,4 +474,32 @@ class UserController extends Controller
             'user' => new \App\Http\Resources\UserResource($user)
         ]);
     }
+
+    /**
+     * RESET PASSWORD USER OLEH ADMIN
+     */
+    public function adminResetPassword(Request $request, User $user)
+    {
+        // Admin must be authenticated as super_admin (middleware preferred, but check here too)
+        if (auth()->user()->role !== 'super_admin') {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $validated = $request->validate([
+            'password' => 'required|string|min:8',
+        ]);
+
+        $user->password = Hash::make($validated['password']);
+        $user->save();
+
+        // Audit Log
+        AuditLog::create([
+            'user_id' => auth()->id(),
+            'action' => 'ADMIN_RESET_PASSWORD',
+            'details' => "Admin reset password for user: {$user->name} ({$user->email})",
+            'ip_address' => request()->ip(),
+        ]);
+
+        return response()->json(['message' => 'Password berhasil direset']);
+    }
 }

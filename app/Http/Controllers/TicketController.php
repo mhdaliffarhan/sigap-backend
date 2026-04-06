@@ -265,6 +265,12 @@ class TicketController extends Controller
         // Tickets last 30 days
         $ticketsLast30Days = Ticket::where('created_at', '>=', now()->subDays(30))->count();
 
+        // Total Service Categories (Dynamic Engine)
+        $totalServiceCategories = \App\Models\ServiceCategory::count();
+
+        // Total Dynamic Roles
+        $totalRoles = \App\Models\Role::count();
+
         // Average resolution time (in hours) - for closed tickets only
         $closedTickets = Ticket::whereIn('status', ['closed', 'selesai'])->get();
         $avgResolutionTime = 0;
@@ -338,6 +344,8 @@ class TicketController extends Controller
                 'ticketsLast7Days' => $ticketsLast7Days,
                 'ticketsLast30Days' => $ticketsLast30Days,
                 'avgResolutionTime' => $avgResolutionTime,
+                'totalServiceCategories' => $totalServiceCategories,
+                'totalRoles' => $totalRoles,
             ],
             'ticketsByType' => $ticketsByType,
             'usersByRole' => $usersByRole,
@@ -556,7 +564,7 @@ class TicketController extends Controller
     public function store(Request $request)
     {
         // 1. PRE-PROCESSING
-        foreach (['form_data', 'zoom_co_hosts', 'ticket_data'] as $jsonField) {
+        foreach (['form_data', 'zoom_co_hosts', 'ticket_data', 'dynamic_form_data'] as $jsonField) {
             if ($request->has($jsonField) && is_string($request->input($jsonField))) {
                 $decoded = json_decode($request->input($jsonField), true);
                 if (json_last_error() === JSON_ERROR_NONE) {
@@ -578,6 +586,7 @@ class TicketController extends Controller
         if ($request->has('service_category_id') && $request->service_category_id != 'null') {
             $rules['service_category_id'] = 'required|exists:service_categories,id';
             $rules['ticket_data'] = 'nullable|array';
+            $rules['dynamic_form_data'] = 'nullable|array';
 
             // Validasi Booking Resource
             if ($request->has('resource_id')) {
@@ -650,7 +659,10 @@ class TicketController extends Controller
                     $ticket->end_date = $request->end_date;
                 }
 
-                $ticket->ticket_data = $validated['ticket_data'] ?? [];
+                // Use either key, favoring dynamic_form_data for new engine
+                $dynamicData = $validated['dynamic_form_data'] ?? ($validated['ticket_data'] ?? []);
+                $ticket->ticket_data = $dynamicData;
+                $ticket->dynamic_form_data = $dynamicData;
             }
             // --- B. TIKET LEGACY ---
             else {

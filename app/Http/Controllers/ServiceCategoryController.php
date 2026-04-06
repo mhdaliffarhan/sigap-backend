@@ -35,7 +35,7 @@ class ServiceCategoryController extends Controller
             'icon' => 'nullable|string',
             'is_active' => 'boolean',
 
-            'handling_role' => 'nullable|string|exists:roles,code',
+            'handling_role_id' => 'nullable|exists:roles,id',
             'is_resource_based' => 'boolean',
 
             'form_schema' => 'nullable|array',
@@ -69,8 +69,7 @@ class ServiceCategoryController extends Controller
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
             'type' => 'required|in:booking,service,repair',
-            'icon' => 'nullable|string',
-            'is_active' => 'boolean',
+            'handling_role_id' => 'nullable|exists:roles,id',
             'is_resource_based' => 'boolean',
             'form_schema' => 'nullable|array',
             'action_schema' => 'nullable|array',

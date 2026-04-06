@@ -16,8 +16,10 @@ class RoleSeeder extends Seeder
             ['code' => 'admin_penyedia', 'name' => 'Admin Penyedia (Vendor)'],
             ['code' => 'teknisi', 'name' => 'Teknisi IT'],
             ['code' => 'pegawai', 'name' => 'Pegawai User'],
-            // ROLE BARU ANDA:
             ['code' => 'admin_ga', 'name' => 'Admin General Affair (GA)'],
+            ['code' => 'admin_kendaraan', 'name' => 'Admin Kendaraan'],
+            ['code' => 'admin_ruangan', 'name' => 'Admin Ruangan & Aula'],
+            ['code' => 'admin_zoom', 'name' => 'Admin Zoom Meeting'],
         ];
 
         foreach ($roles as $role) {

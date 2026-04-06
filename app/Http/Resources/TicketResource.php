@@ -33,7 +33,6 @@ class TicketResource extends JsonResource
             'end_date' => $this->end_date,
             'dynamic_form_data' => $this->dynamic_form_data, // <-- Ini isian form (supir, penumpang, dll)
             'action_data' => $this->action_data,
-            'action_data' => $this->action_data,
             'current_assignee_role' => $this->current_assignee_role,
             // ----------------------------------------
 

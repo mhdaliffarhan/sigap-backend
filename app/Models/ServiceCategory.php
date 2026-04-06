@@ -19,6 +19,7 @@ class ServiceCategory extends Model
         'slug',
         'type',
         'handling_role',
+        'handling_role_id',
         'icon',
         'description',
         'form_schema',       // Schema Input User
@@ -48,6 +49,12 @@ class ServiceCategory extends Model
                 $model->slug = Str::slug($model->name);
             }
         });
+    }
+
+    // Relasi ke Role Penangan (Dinamis)
+    public function handlingRole()
+    {
+        return $this->belongsTo(Role::class, 'handling_role_id');
     }
 
     // Relasi ke Resource (Mobil/Ruangan)

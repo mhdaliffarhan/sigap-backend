@@ -30,6 +30,7 @@ class User extends Authenticatable
         'avatar',
         'is_on_leave',
         'role',
+        'role_id',
         'roles',
         'is_active',
         'failed_login_attempts',
@@ -80,5 +81,10 @@ class User extends Authenticatable
     public function assignedTickets()
     {
         return $this->hasMany(Ticket::class, 'assigned_to');
+    }
+
+    public function role()
+    {
+        return $this->belongsTo(Role::class, 'role_id');
     }
 }
