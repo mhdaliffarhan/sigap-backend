@@ -1,0 +1,19 @@
+STATUSES:
+Array
+(
+    [rejected] => 0e5236aa-a5c2-43b8-ab27-0988950b7f2f
+    [assigned] => 31c1b660-2a28-4ebe-b33e-1c873a8fdcaa
+    [pending_review] => 547763b3-4577-4dc2-8ede-499c76e92418
+    [completed] => 7dc82571-0e71-4d14-b7a9-4583a0b54516
+    [closed] => bb9b152d-711d-4452-af4f-2261383cb96c
+    [approved] => bba9a38b-caf3-4152-bbef-447a383c0862
+    [resolved] => cfd3ff1b-d673-4367-a4ee-5f018138a45d
+    [in_progress] => e1854c82-8aff-433f-881b-229859e36ac3
+    [submitted] => f1ae92cc-8a7d-4045-b737-c474fc736fac
+)
+
+CATEGORIES:
+Array
+(
+    [perbaikan-bmn] => 34573fb5-56e1-4dd6-a957-6b616f9833e1
+)

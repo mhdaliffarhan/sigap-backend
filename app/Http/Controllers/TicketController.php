@@ -663,6 +663,12 @@ class TicketController extends Controller
                 $dynamicData = $validated['dynamic_form_data'] ?? ($validated['ticket_data'] ?? []);
                 $ticket->ticket_data = $dynamicData;
                 $ticket->dynamic_form_data = $dynamicData;
+
+                // --- BMN SYNC LOGIC (FOR COMPATIBILITY) ---
+                if (isset($dynamicData['kode_barang'])) $ticket->asset_code = $dynamicData['kode_barang'];
+                if (isset($dynamicData['nup'])) $ticket->asset_nup = $dynamicData['nup'];
+                if (isset($dynamicData['asset_location'])) $ticket->asset_location = $dynamicData['asset_location'];
+                if (isset($dynamicData['severity'])) $ticket->severity = $dynamicData['severity'];
             }
             // --- B. TIKET LEGACY ---
             else {

@@ -37,7 +37,7 @@ Ikuti langkah-langkah berikut untuk menjalankan aplikasi secara lokal:
 4. **Migrasi Database**
    Jalankan migrasi untuk membuat tabel-tabel yang diperlukan:
    ```bash
-   php artisan migrate
+   php artisan migrate 
    ```
 
 5. **Jalankan Aplikasi**
@@ -47,7 +47,7 @@ Ikuti langkah-langkah berikut untuk menjalankan aplikasi secara lokal:
    ```
    Atau jalankan server secara manual:
    ```bash
-   php artisan serve
+   php artisan serve --port=8001
    ```
 
 ## ✨ Fitur Utama
