@@ -83,13 +83,15 @@ class AuthController extends Controller
             ]);
         }
 
-        // 5. Login Berhasil: Reset semua counter keamanan
+        // 5. Login Berhasil: Reset semua counter keamanan dan set last_login
+        $updateData = [
+            'last_login' => now(),
+        ];
         if ($user->failed_login_attempts > 0 || $user->locked_until) {
-            $user->update([
-                'failed_login_attempts' => 0,
-                'locked_until' => null,
-            ]);
+            $updateData['failed_login_attempts'] = 0;
+            $updateData['locked_until'] = null;
         }
+        $user->update($updateData);
 
         // 6. Buat Token Akses
         $token = $user->createToken('auth_token')->plainTextToken;

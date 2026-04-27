@@ -35,6 +35,7 @@ class User extends Authenticatable
         'is_active',
         'failed_login_attempts',
         'locked_until',
+        'last_login',
     ];
 
     /**
@@ -61,6 +62,7 @@ class User extends Authenticatable
             'is_on_leave' => 'boolean',
             'is_active' => 'boolean',
             'locked_until' => 'datetime',
+            'last_login' => 'datetime',
         ];
     }
 

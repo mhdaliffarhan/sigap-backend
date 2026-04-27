@@ -372,22 +372,43 @@ class TicketController extends Controller
             ->count();
 
         // Closed tiket: status closed + perbaikan rejected + zoom approved + zoom rejected
-        $closedCount = Ticket::where(function ($q) {
+        $closedQuery = Ticket::where(function ($q) {
             $q->where('status', 'closed')
                 ->orWhere(function ($q2) {
-                    // Tiket perbaikan yang rejected dianggap closed
                     $q2->where('type', 'perbaikan')->where('status', 'rejected');
                 })
                 ->orWhere(function ($q3) {
-                    // Tiket zoom yang approved dianggap closed
                     $q3->where('type', 'zoom_meeting')->where('status', 'approved');
                 })
                 ->orWhere(function ($q4) {
-                    // Tiket zoom yang rejected dianggap closed
                     $q4->where('type', 'zoom_meeting')->where('status', 'rejected');
                 });
-        })->count();
+        });
+        
+        $closedCount = $closedQuery->count();
         $closureRate = $total > 0 ? round(($closedCount / $total) * 100, 2) : 0;
+
+        // NEW: Average resolution time
+        $avgResolutionTime = 0;
+        if ($closedCount > 0) {
+            $closedTickets = $closedQuery->get();
+            $totalHours = 0;
+            foreach ($closedTickets as $t) {
+                $created = \Carbon\Carbon::parse($t->created_at);
+                $updated = \Carbon\Carbon::parse($t->updated_at);
+                $totalHours += $created->diffInHours($updated);
+            }
+            $avgResolutionTime = round($totalHours / $closedCount, 1);
+        }
+
+        // NEW: Top Service Categories
+        $topCategories = DB::table('tickets')
+            ->join('service_categories', 'tickets.service_category_id', '=', 'service_categories.id')
+            ->select('service_categories.name', DB::raw('count(*) as count'))
+            ->groupBy('service_categories.id', 'service_categories.name')
+            ->orderBy('count', 'desc')
+            ->limit(5)
+            ->get();
 
         // Last 7 days trend data
         $last7Days = [];
@@ -427,6 +448,8 @@ class TicketController extends Controller
                     'percentage' => $closureRate,
                     'description' => "{$closureRate}% dari total tiket",
                 ],
+                'avg_resolution_time' => $avgResolutionTime,
+                'top_categories' => $topCategories,
             ],
             'trend' => $last7Days,
         ]);

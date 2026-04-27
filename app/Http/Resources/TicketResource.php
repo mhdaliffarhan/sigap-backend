@@ -23,6 +23,7 @@ class TicketResource extends JsonResource
             'description' => $this->description,
             'status' => $this->status,
             'severity' => $this->severity,
+            'user_id' => $this->user_id,
 
             // --- FIELD BARU UNTUK LAYANAN DINAMIS ---
             'service_category_id' => $this->service_category_id,
@@ -54,6 +55,7 @@ class TicketResource extends JsonResource
             'attachments' => $this->attachments,
             'timeline' => TimelineResource::collection($this->whenLoaded('timeline')),
             'comments' => CommentResource::collection($this->whenLoaded('comments')),
+            'feedback' => $this->whenLoaded('feedback'),
         ];
     }
 

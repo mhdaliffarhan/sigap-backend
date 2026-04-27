@@ -29,6 +29,7 @@ class UserResource extends JsonResource
 
         return [
             'id' => (string) $this->id,
+            'username' => (string) ($this->username ?? ''),
             'email' => (string) $this->email,
             'name' => (string) ($this->name ?? ''),
             'nip' => (string) ($this->nip ?? ''),
@@ -39,6 +40,7 @@ class UserResource extends JsonResource
             'phone' => (string) ($this->phone ?? ''),
             'avatar' => $this->avatar,
             'createdAt' => optional($this->created_at)->toISOString(),
+            'lastLogin' => optional($this->last_login)->toISOString(),
             'isActive' => (bool) ($this->is_active ?? true),
             'failedLoginAttempts' => (int) ($this->failed_login_attempts ?? 0),
             'lockedUntil' => optional($this->locked_until)->toISOString(),

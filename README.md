@@ -56,22 +56,23 @@ Ikuti langkah-langkah berikut untuk menjalankan aplikasi secara lokal:
   - Integrasi SSO (Single Sign-On) Stats NTB.
   - Autentikasi API via Laravel Sanctum.
   - Manajemen Role & Permission.
-- **Manajemen Tiket**:
-  - Pembuatan dan pengelolaan tiket layanan.
-  - Dashboard statistik (Admin, Super Admin, Layanan).
-  - Ekspor data tiket ke Excel.
-  - Kalender jadwal layanan.
+- **Manajemen Tiket & Workflow**:
+  - Pembuatan dan pengelolaan tiket layanan (Standard & Dynamic).
+  - **Dynamic Workflow Engine**: Alur kerja berbasis state machine yang dapat dikonfigurasi.
+  - Dashboard statistik premium (Admin, Super Admin, Layanan).
+  - Ekspor data tiket ke Excel terstandarisasi.
+  - Fitur Delegasi/Transfer tiket antar unit kerja.
 - **Work Orders (Perintah Kerja)**:
-  - Alur kerja teknisi dari penugasan hingga penyelesaian.
-  - Kartu Kendali untuk pemantauan pekerjaan.
+  - Alur kerja teknisi dari diagnosis hingga penyelesaian.
+  - Kartu Kendali untuk pemantauan pekerjaan secara real-time.
 - **Manajemen Aset BMN**:
-  - Inventarisasi aset BMN.
+  - Inventarisasi aset BMN terintegrasi dengan pengajuan perbaikan.
   - Fitur Import & Export data via Excel.
 - **Integrasi Zoom**:
-  - Penjadwalan akun Zoom otomatis.
-  - Cek ketersediaan dan konflik jadwal.
-- **Audit Logs**:
-  - Pencatatan otomatis setiap aktivitas penting dalam sistem.
+  - Penjadwalan akun Zoom otomatis dengan deteksi konflik jadwal.
+- **Audit Logs & Keamanan**:
+  - Pencatatan aktivitas sistem yang komprehensif.
+  - Validasi keamanan password dan integrasi SSO.
 - **Notifikasi**:
   - Notifikasi real-time untuk status tiket dan penugasan.
 

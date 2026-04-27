@@ -31,7 +31,7 @@ class ServiceCategoryController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'type' => 'required|in:booking,repair,general',
+            'type' => 'required|in:booking,repair,service', // Menyesuaikan dengan user (Peminjaman, Perbaikan BMN, Jasa)
             'icon' => 'nullable|string',
             'is_active' => 'boolean',
 
@@ -39,7 +39,14 @@ class ServiceCategoryController extends Controller
             'is_resource_based' => 'boolean',
 
             'form_schema' => 'nullable|array',
+            'form_schema.*.name' => 'required_with:form_schema|string',
+            'form_schema.*.label' => 'required_with:form_schema|string',
+            'form_schema.*.type' => 'required_with:form_schema|string',
+
             'action_schema' => 'nullable|array',
+            'action_schema.*.name' => 'required_with:action_schema|string',
+            'action_schema.*.label' => 'required_with:action_schema|string',
+            'action_schema.*.type' => 'required_with:action_schema|string',
 
             // Konfigurasi Assignment
             'target_role' => 'nullable|string',
@@ -71,8 +78,17 @@ class ServiceCategoryController extends Controller
             'type' => 'required|in:booking,service,repair',
             'handling_role_id' => 'nullable|exists:roles,id',
             'is_resource_based' => 'boolean',
+            
             'form_schema' => 'nullable|array',
+            'form_schema.*.name' => 'required_with:form_schema|string',
+            'form_schema.*.label' => 'required_with:form_schema|string',
+            'form_schema.*.type' => 'required_with:form_schema|string',
+
             'action_schema' => 'nullable|array',
+            'action_schema.*.name' => 'required_with:action_schema|string',
+            'action_schema.*.label' => 'required_with:action_schema|string',
+            'action_schema.*.type' => 'required_with:action_schema|string',
+
             'target_role' => 'nullable|string',
             'assignment_type' => 'in:auto,manual,direct',
             'default_assignee_id' => 'nullable|required_if:assignment_type,direct|exists:users,id',
